@@ -13,7 +13,7 @@ from glob import glob
 if __name__ == "__main__":
 
 
-    eagleDir = f'/mnt/d/eagle'    
+    eagleDir = f'/projects/wec/pyWecPredict_data'    
     downloadDir = f'noaa_downloads'
     processDir = f'{eagleDir}/predictions'
     
@@ -29,9 +29,9 @@ if __name__ == "__main__":
     selectedBuoys = [f'clatsop_spit']#f'humboldt_bay',f'fairweather_grounds',f'cape_suckling'] ## select a buoy to analyze
     noaaBuoyInfo = f'./noaa_Buoy_info.csv' ## base buoy info file
 
-    updateDays = False ## update available days 
-    extractNCData = False ## If True load buoy data from model data
-    combinedNCDatasets = False ## If True the datasets will be combined
+    updateDays = True ## update available days 
+    extractNCData = True ## If True load buoy data from model data
+    combinedNCDatasets = True ## If True the datasets will be combined
     updateNCFiles = False  ## True will update noaa model datafiles locally
     loadLatestNCBuoys = True ## True to load latest or date specific uoy data
     updateBuoyFiles = False ## True will update noaa buoy datafiles locally
@@ -70,7 +70,6 @@ if __name__ == "__main__":
         concats = ['t00z','t06z','t12z','t18z']
         fc.combine_datasets(ftpDays,concats=concats,regions=regions,
                             parallel=parallel,eagleDir=eagleDir)
-
 
     # \\\\\\\\\\\\\\\\\\ Update Buoy files from NOAA ////////////////////
     buoys = read_csv(noaaBuoyInfo,index_col=0)
@@ -132,12 +131,14 @@ if __name__ == "__main__":
         timeGroupsNC = {}
         for buoy in selectedBuoys:
             timeGroupsNC[buoy] = ps.extract_variables(ncBuoys[buoy],'swh','perpw')
-        '''
+        ''' 
         with open('./model_tg_save.pkl','wb') as f:
             pickle.dump(timeGroupsNC,f)
+        '''
+        print(ncBuoys[selectedBuoys[0]])
         with open('./model_tg_save.pkl','rb') as f:
             timeGroupsNC = pickle.load(f)
-        '''
+        
         selectNC = {}
         for buoy in selectedBuoys:
             selectNC[buoy] = ps.timeseries_params(timeGroupsNC[buoy],wecSim_db)
@@ -163,3 +164,6 @@ if __name__ == "__main__":
         timeseriesNC = {}
         for buoy in selectedBuoys:
             timeseriesNC[buoy] = ps.linear_transition_timeseries_model(fftNC[buoy],selectNC[buoy],buoy)
+
+
+

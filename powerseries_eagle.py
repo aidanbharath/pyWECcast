@@ -27,6 +27,7 @@ def extract_variables(File,Hs,Te,dwp=True):
                     startGroup.append((time,times[i+1],
                                         str(hs.sel(valid_time=time).values),
                                         str(te.sel(valid_time=time).values)))
+                   
                 except IndexError as e:
                     pass
             thp[st] = startGroup
@@ -78,8 +79,10 @@ def timeseries_params(ts, model_db, freq=10, f='s', closest=True):
                 for tkey, tdata in tqdm(ts.items()):
                     selection = []
                     for t in tdata:
+                         
                         seed = choice(ws.attrs['Seeds'])
                         Hs = list(ws[seed].keys())  
+                        print(Hs,t)
                         Hs = Hs[abs(array(strip(Hs))-float32(t[2])).argmin()]
                         Te = list(ws[seed][Hs].keys())
                         Te = Te[abs(array(strip(Te))-float32(t[3])).argmin()]

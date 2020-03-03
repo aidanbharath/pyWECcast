@@ -112,9 +112,10 @@ def combine_datasets(days,concats=[''],regions=[''],dlDir=f'noaa_downloads',
                         print(f'Processing {day}/{concat}/{region}')
                         ds = xr.open_mfdataset(f'{dlDir}/{day}/*{region}.{concat}*',
                                         combine='nested',
-                                        concat_dim=['valid_time'],
+                                        concat_dim=['sim_start'],
                                         engine='cfgrib',
                                         parallel=parallel)
+                        print(ds.swh.shape)
                         ds.to_netcdf(f'{sf}/{fname}')
                         print(f'Processed and saved {fname}')
                 except OSError as e:
