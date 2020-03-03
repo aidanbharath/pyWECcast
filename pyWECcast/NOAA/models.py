@@ -75,6 +75,7 @@ class __MODEL__(object):
         else:
             self.ftp_prefix = 'multi_1'
         if 'tempGRIBFile' in kwargs.keys():
+            # create and automatic file build if doesn't exist 
             self.tempGRIB = kwargs['tempGRIBFile']
         else:
             self.tempGRIB = './tempGRIB'
@@ -200,7 +201,7 @@ class NOAA_Forecast(__MODEL__):
             print(f'Loading Group: {group}')
             ds = open_mfdataset(groupNames,
                 combine='nested',
-                concat_dim=['valid_time'],
+                #concat_dim=['valid_time'],
                 engine='cfgrib',
                 )
             #ds.to_netcdf('test.nc')
@@ -239,6 +240,7 @@ class NOAA_Forecast(__MODEL__):
                         for i,dim in enumerate(ds[var].dims): 
                             chunks.append(int(ds[var].shape[i]/self.chunks[dim]))
                         maxshape=tuple(None for i in chunks)
+                        print(ds[var].values,ds[var].values.shape)
                         grp.create_dataset(f'{var}',data=ds[var].values[newaxis,:],
                                     dtype=ds[var].dtype,
                                     chunks=tuple(chunk for chunk in chunks),
