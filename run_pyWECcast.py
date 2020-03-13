@@ -5,3 +5,4 @@ buoyFile = 'noaa_Buoy_info.csv'
 
 modelRegions = ['wc_10m']
 models = wc.models.download(modelRegions)
+#wc.models.processH5('t00z',search_host=False)
