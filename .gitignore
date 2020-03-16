@@ -1,6 +1,5 @@
 *.pkl*
 *.nc*
-*db*
 combine*
 __pycache__/
 *.h5
