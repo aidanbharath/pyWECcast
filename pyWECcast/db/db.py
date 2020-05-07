@@ -1,14 +1,11 @@
 
-from numpy import array, sqrt, meshgrid, dstack, argmin, unravel_index
-from pandas import to_datetime
-from abc import ABCMeta, abstractmethod
+from numpy import array, sqrt, meshgrid, dstack, argmin, unravel_index, float32
+from pandas import to_datetime, read_csv, DataFrame
 from h5py import File
 from tqdm import tqdm
 
 
-class __DB_HANDLER__(object):
-
-    __metaclass__ = ABCMeta
+class WW3(object):
 
     def __init__(self,db,*args,**kwargs):
         
@@ -16,7 +13,7 @@ class __DB_HANDLER__(object):
         self.kwargs = kwargs
         self.db = db
         self.loc_args, self.time_args = {}, {}
-        self.begin, self. end = None, None
+        self.begin, self.end = None, None
         self.variables = None
 
         if len(self.args) >= 2:
@@ -32,10 +29,10 @@ class __DB_HANDLER__(object):
         with File(self.db,'r+') as hdf:
             
             if 'model_id' in list(self.kwargs.keys()):
-                self.model_id = list(self.kwargs['model_id'])
+                self.model_id = [self.kwargs['model_id']]
             else:
                 self.model_id = list(hdf.keys())
-            
+
             self.times = {model:to_datetime(list(hdf[model].keys()))
                                 for model in self.model_id}
     
@@ -46,17 +43,6 @@ class __DB_HANDLER__(object):
     def __attrs__(self):
         return [d for d in self.__dict__ if '__' not in d]
     
-    @abstractmethod
-    def get_location(self,*args):
-        pass
-
-    @abstractmethod
-    def get_times(self,*args):
-        pass
-
-
-class WW3(__DB_HANDLER__):
-
     def get_location(self,*args):
 
         # This needs to be made to work with lists of lon lats
@@ -70,7 +56,7 @@ class WW3(__DB_HANDLER__):
                 key = list(hdf[model].keys())[0]
                 lons, lats = meshgrid(hdf[f'{model}/{key}']['longitude'][:],
                                 hdf[f'{model}/{key}']['latitude'][:])
-
+    
                 distance = dstack([sqrt((lons-[self.lon][i])**2+(lats-[self.lat][i])**2)
                                     for i,j in enumerate([self.lon])])
                 self.loc_args[model] = [unravel_index(argmin(distance[:,:,i],axis=None),
@@ -80,24 +66,26 @@ class WW3(__DB_HANDLER__):
 
     def get_times(self,*args):
 
-        assert args or self.begin, 'No Times have been set'
-
         if len(args) >= 1:
             self.begin = to_datetime(args[0]) 
         if len(args) >= 2:
             self.end = to_datetime(args[1])
 
-        for model in self.model_id:
-            if self.begin:
-                begin = self.times[model] >= self.begin
-            else:
-                begin = True
-            if self.end:
-                end = self.times[model] <= self.end
-            else:
-                end = True
+        if not self.begin:
+            for model in self.model_id:
+                self.time_args[model] = self.times[model]
+        else:
+            for model in self.model_id:
+                if self.begin:
+                    begin = self.times[model] >= self.begin
+                else:
+                    begin = True
+                if self.end:
+                    end = self.times[model] <= self.end
+                else:
+                    end = True
 
-            self.time_args[model] = self.times[model][begin*end]            
+                self.time_args[model] = self.times[model][begin*end]            
 
 
     def reduce_db(self,saveName):
@@ -114,13 +102,14 @@ class WW3(__DB_HANDLER__):
                         with File(self.db,'r') as db:
                             self.trans = list(db[f'{model}/{time}'].keys())
                     
-                    lon = self.loc_args[model][0][0]
-                    lat = self.loc_args[model][0][1]
+                    lat = self.loc_args[model][0][0]
+                    lon = self.loc_args[model][0][1]
                     with File(self.db,'r') as db:
                         prefix = f'{model}/{time}'
+                        vt = db[f'{prefix}/valid_time']
                         hdf.create_dataset(f'{prefix}/valid_time',
-                                            data=db[f'{prefix}/valid_time'],
-                                            dtype=db[f'{prefix}/valid_time'].dtype)
+                                            data=vt,
+                                            dtype=vt.dtype)
                         hdf.create_dataset(f'{prefix}/level',
                                             data=db[f'{prefix}/level'],
                                             dtype=db[f'{prefix}/level'].dtype)
@@ -133,14 +122,101 @@ class WW3(__DB_HANDLER__):
                         for var in self.trans:
                             if var not in dims and var not in levels:
                                 hdf.create_dataset(f'{prefix}/{var}',
-                                        data=db[f'{prefix}/{var}'][:,lon,lat],
+                                        data=db[f'{prefix}/{var}'][:,lat,lon],
                                                 dtype=db[f'{prefix}/{var}'].dtype)
                             elif var in levels:
                                 hdf.create_dataset(f'{prefix}/{var}',
-                                        data=db[f'{prefix}/{var}'][:,:,lon,lat],
+                                        data=db[f'{prefix}/{var}'][:,:,lat,lon],
                                                 dtype=db[f'{prefix}/{var}'].dtype)
 
 
+class Buoy(object):
+    
+    def __init__(self,db,*args,**kwargs):
+        
+        self.args = args
+        self.kwargs = kwargs
+        self.db = db
+        self.names, self.latitude, self.longitude = {}, {}, {}
+        self.variables = None
+        
+        if 'buoyFile' not in list(self.kwargs.keys()):
+            self.buoyFile = f'./noaa_Buoy_info.csv'
+        else:
+            self.buoyFile = self.kwargs['buoyFile']
+
+        if 'buoys' in list(self.kwargs.keys()):
+            self.buoys = list(self.kwargs['buoys'])
+        else:
+            with File(self.db,'r') as hdf:
+                self.buoys = list(hdf.keys()) 
+            
+        if 'variables' in list(self.kwargs.keys()):
+            self.variables = list(self.kwargs['variables'])
+        
+        with File(self.db,'r') as hdf:
+            self.times = {b:to_datetime([a.decode() for a in hdf[b]['time_index']])
+                                for b in self.buoys}
+            
+        try:
+            name = read_csv(self.buoyFile,index_col=f'Unnamed: 0').astype(object)
+            for b in self.buoys:
+                col = name.loc[:,name.loc['buoy_number']==int(b)]
+                self.names[b] = col.columns[0]
+                self.latitude[b] = col.loc['latitude'][0]
+                self.longitude[b] = col.loc['longitude'][0]
+        except:
+            self.names = f'-- Name Association File Not Found --'
+    
+    def __repr__(self):
+        if type(self.names) is not str(): 
+            return f'Buoys: {self.names}'
+            
+    def __attrs__(self):
+        return [d for d in self.__dict__ if '__' not in d]
+    
+    def add_DWP(self):
+        
+        def calc_DWP(buoy):
+            he = float32(buoy.loc[:,'WVHT'].values)
+            swell = float32(buoy.loc[:,'SwH'].values)
+            windw = float32(buoy.loc[:,'WWH'].values)
+            DWP = []
+            for i,j in enumerate(swell>=windw):
+                if j:
+                    DWP.append(float32(buoy.iloc[i].loc['SwP']))
+                elif not j:
+                    DWP.append(float32(buoy.iloc[i].loc['WWP']))
+
+            return array(DWP)
+                                
+        with File(self.db,'a') as hdf:
+            for b in self.buoys:
+                #try:
+                df = DataFrame(array([hdf[b]['WVHT'][:],hdf[b]['SwH'][:],
+                                         hdf[b]['WWH'][:],
+                                         hdf[b]['SwP'][:],hdf[b]['WWP'][:]]).T,
+                                         columns=['WVHT','SwH','WWH','SwP','WWP'],
+                                         index=self.times[b]
+                                     )
+                DWP = calc_DWP(df)
+                try:
+                    hdf.create_dataset(f'{b}/DWP',data=DWP,dtype=DWP.dtype)
+                except RuntimeError as e:
+                    hdf[f'{b}/DWP'][:] = DWP
+    
+    def load(self,*buoy):
+        if not buoy:
+            for b in self.buoys:
+                with File(self.db,'r') as hdf:
+                    yield hdf[b]
+        else:
+            for b in buoy:
+                with File(self.db,'r') as hdf:
+                    yield hdf[b]
+                                
+        
+        
 def get_data(db,saveName,*args,**kwargs):
 
     ww = WW3(db,*args,**kwargs)

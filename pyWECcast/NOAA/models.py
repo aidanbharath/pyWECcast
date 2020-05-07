@@ -49,6 +49,14 @@ class __MODEL__(object):
 
         It will then sort the days.
         """
+        if 'processH5s' in kwargs.keys():
+            self.processH5s = kwargs['processH5s']
+        else:
+            self.processH5s = True
+        if 'processVars' in kwargs.keys():
+            self.processVars = kwargs['processVars']
+        else:
+            self.processVars = ['swh','perpw']
         if 'host' in kwargs.keys():
             self.host = kwargs['model_ftp']
             self.__dhost = False
@@ -158,7 +166,7 @@ class __MODEL__(object):
 
 class NOAA_Forecast(__MODEL__):
 
-    def download(self,processH5=True, groups=('t00z','t06z','t12z','t18z'),remove=False):
+    def download(self, groups=('t00z','t06z','t12z','t18z'),remove=False):
         """
         Check if the ftp host is available
         """
@@ -183,7 +191,7 @@ class NOAA_Forecast(__MODEL__):
                                 with open(f'{self.tempGRIB}/{self.key}/{Url.split("/")[-1]}', 'wb') as tempFile:
                                     shutil.copyfileobj(url, tempFile)
                         
-                    if processH5:
+                    if self.processH5s:
                         print(f'-- Processing into HDF5 Format --')
                         for tz in groups:   
                             self.processH5(tz)
@@ -213,8 +221,7 @@ class NOAA_Forecast(__MODEL__):
         try:
             groupNames = glob(f'{self.tempGRIB}/{self.key}/*{group}*')
             print(f'Loading Group: {group}')
-            #print(f'Processing GRIB file Variables for reference time: {ds["time"].values}')
-            fhr = array([n.split('.')[4] for n in groupNames])
+            fhr = array(sorted(list(set([n.split('.')[4] for n in groupNames]))))
             for name in tqdm(groupNames):
                 ds = open_dataset(name,engine='cfgrib')
                 with File(self.h5fname,'a') as hdf:
@@ -224,14 +231,23 @@ class NOAA_Forecast(__MODEL__):
                     else:
                         model = group
                         sim_start = stpTime(ds['time'].values)
+                    
+                    hdfKey = f'{model}/{sim_start[0].decode("ascii")}'
+
                     try:
-                        #hdf[f'{model}/{sim_start[0].decode("ascii")}']
-                        grp = hdf[f'{model}/{sim_start[0].decode("ascii")}']
-                        variables = [var for var in ds.variables
+                        grp = hdf[hdfKey]
+                        if 'status' not in list(hdf[hdfKey].attrs.keys()):
+                            hdf[hdfKey].attrs['status'] = ['working']
+                
+                        if 'complete' not in hdf[hdfKey].attrs['status']:
+                            variables = [var for var in ds.variables
                                             if var not in self.dims]
-                        for var in variables: 
-                            grp[var][argwhere(name.split('.')[4]==fhr),:] = ds[var].values
-                    #if not model in list(hdf.keys()):
+                            for var in variables: 
+                                if var in self.processVars:
+                                    grp[var][argwhere(name.split('.')[4]==fhr),:] = ds[var].values
+                        else:
+                            pass
+                        
                     except KeyError as notMade:
                         if not model in list(hdf.keys()):
                             GRP = hdf.create_group(model)
@@ -261,38 +277,32 @@ class NOAA_Forecast(__MODEL__):
                             variables = [var for var in ds.variables
                                             if var not in self.dims]
                             for var in variables: 
-                                if var not in grp.keys():
-                                    chunks = [self.chunks['valid_time']]
-                                    data = ds[var].values[newaxis,:]
-                                    for i,dim in enumerate(ds[var].dims):
-                                        chunks.append(int(ds[var].shape[i]/self.chunks[dim]))
-                                    maxshape=tuple(None for i in chunks)
-                                    grp.create_dataset(f'{var}',fhr.shape+ds[var].shape,
-                                                #data=ds[var].values[newaxis,:],
-                                                dtype=ds[var].dtype,
-                                                chunks=tuple(chunk for chunk in chunks),
-                                                maxshape=maxshape,
-                                                compression=compression
-                                            )
-                                    grp[var][0,:] = ds[var].values
-                                    for attr in ds[var].attrs.keys():
-                                        grp[var].attrs[attr] = ds[var].attrs[attr]
-                                    grp[var].attrs['dims'] = ['valid_time']+list(ds[var].dims)
-                                    for i,dim in enumerate(grp[var].attrs['dims']):
-                                        grp[var].dims[i].label = dim
-                        
-                            
-                    '''
-                    else:
-                        grp = hdf[f'{model}/{sim_start[0].decode("ascii")}']
-                        variables = [var for var in ds.variables
-                                            if var not in self.dims]
-                        for var in variables: 
-                            grp[var][argwhere(name.split('.')[4]==fhr),:] = ds[var].values
-                    '''
+                                if var in self.processVars:
+                                    if var not in grp.keys():
+                                        chunks = [self.chunks['valid_time']]
+                                        data = ds[var].values[newaxis,:]
+                                        for i,dim in enumerate(ds[var].dims):
+                                            chunks.append(int(ds[var].shape[i]/self.chunks[dim]))
+                                        maxshape=tuple(None for i in chunks)
+                                        grp.create_dataset(f'{var}',fhr.shape+ds[var].shape,
+                                                    dtype=ds[var].dtype,
+                                                    chunks=tuple(chunk for chunk in chunks),
+                                                    maxshape=maxshape,
+                                                    compression=compression
+                                                )
+                                        grp[var][0,:] = ds[var].values
+                                        for attr in ds[var].attrs.keys():
+                                            grp[var].attrs[attr] = ds[var].attrs[attr]
+                                        grp[var].attrs['dims'] = ['valid_time']+list(ds[var].dims)
+                                        for i,dim in enumerate(grp[var].attrs['dims']):
+                                            grp[var].dims[i].label = dim
+
                     for attr in ds.attrs.keys():
                         if attr not in grp.attrs.keys():
                             grp.attrs[attr] = ds.attrs[attr]
+            
+            with File(self.h5fname,'a') as hdf:
+                hdf[hdfKey].attrs['status'][0] = 'complete'
         
         except OSError as e:
             print(f'No files in {group} Available to open',e)
