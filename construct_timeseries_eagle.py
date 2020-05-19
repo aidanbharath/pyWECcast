@@ -14,7 +14,7 @@ def cuts(shape):
     powers = 0
     while 2**powers <= shape:
         powers += 1
-    return shape-2**(powers - 1)
+    return shape - 2**(powers - 1)
 
 
 def FFT(time, data):
