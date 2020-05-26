@@ -28,33 +28,33 @@ class __POWERSERIES__(object):
             self.ws = args[0]
         else:
             self.ws = None
-        if 'resultDB' in self.kwargs.keys(): 
+        if 'resultDB' in list(self.kwargs.keys()): 
             self.resultDB = self.kwargs['resultDB']
-        if 'Hs' not in self.kwargs.keys():
+        if 'Hs' not in list(self.kwargs.keys()):
             self.h0 = 'swh'
         else:
             self.h0 = self.kwargs['Hs']
-        if 'Tp' not in self.kwargs.keys():
+        if 'Tp' not in list(self.kwargs.keys()):
             self.te = 'perpw'
         else:
             self.te = self.kwargs['Tp']
-        if 'tempFFTFiles' not in self.kwargs.keys():
+        if 'tempFFTFiles' not in list(self.kwargs.keys()):
             self.tempFFT = f'./tempFFTFile.h5'
         else:
             self.tempFFT = self.kwargs['tempFFTFiles']
-        if 'time_var' not in self.kwargs.keys():
+        if 'time_var' not in list(self.kwargs.keys()):
             self.time_var = 'Time'
         else:
             self.time_var = self.kwargs['time_var']
-        if 'variable' not in self.kwargs.keys():
+        if 'variable' not in list(self.kwargs.keys()):
             self.var = 'Power'
         else:
             self.var = self.kwargs['variable']
-        if 'freq_limit' not in self.kwargs.keys():
+        if 'freq_limit' not in list(self.kwargs.keys()):
             self.freq_limit = 1
         else:
             self.freq_limit = self.kwargs['freq_limit']
-        if 'freq' not in self.kwargs.keys():
+        if 'freq' not in list(self.kwargs.keys()):
             self.freq = self.kwargs['freq']
         else:
             self.freq = '10S'
@@ -88,7 +88,7 @@ class buoy(object):
         if 'variables' in list(self.kwargs.keys()):
             self.variables = list(self.kwargs['variables'])
         
-        if 'freq' not in self.kwargs.keys():
+        if 'freq' not in list(self.kwargs.keys()):
             self.freq = self.kwargs['freq']
         else:
             self.freq = '10S'
@@ -107,19 +107,19 @@ class buoy(object):
             self.ws = args[0]
         else:
             self.ws = None
-        if 'resultDB' in self.kwargs.keys(): 
+        if 'resultDB' in list(self.kwargs.keys()): 
             self.resultDB = self.kwargs['resultDB']
         else:
             self.resultDB = 'tempBuoyResults.h5'
-        if 'Hs' not in self.kwargs.keys():
+        if 'Hs' not in list(self.kwargs.keys()):
             self.h0 = 'WVHT'
         else:
             self.h0 = self.kwargs['Hs']
-        if 'Tp' not in self.kwargs.keys():
+        if 'Tp' not in list(self.kwargs.keys()):
             self.te = 'DWP'
         else:
             self.te = self.kwargs['Tp']
-        if 'tempFFTFiles' not in self.kwargs.keys():
+        if 'tempFFTFiles' not in list(self.kwargs.keys()):
             self.tempFFT = f'./tempFFTFile_buoy.h5'
         else:
             self.tempFFT = self.kwargs['tempFFTFiles']
@@ -194,7 +194,7 @@ class buoy(object):
                                    item['fcInts'])
                 shape = coef.shape[0]
             Sum = sum(coef.real*cos(2*pi*freq*t)+coef.imag*sin(2*pi*freq*t))
-            return (2/shape)*Sum
+            return (1/shape)*Sum
 
         for b in self.buoys:
             result = zeros(self.recon_times[b].shape[0])
@@ -327,7 +327,7 @@ class forecast(__POWERSERIES__):
                         fftkey = f'{fftTime["Hs"].values[-1]}/{fftTime["Tp"].values[-1]}'
                         data = fftFile[fftkey]
                         A,f = (data['Amplitude'][:],data['frequency'][:])
-                        result[i] = (2/A.shape[0])*recon(A,f,fcInts[i])
+                        result[i] = (1/A.shape[0])*recon(A,f,fcInts[i])
                     saveTimes = string_([t.encode('utf-8') 
                                         for t in fcTimes.strftime('%Y-%m-%d %H:%M:%S')])
                     grp.create_dataset('time_index',data=saveTimes,dtype=saveTimes.dtype)
