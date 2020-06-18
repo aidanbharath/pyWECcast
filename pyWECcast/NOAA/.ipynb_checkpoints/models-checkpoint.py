@@ -226,13 +226,16 @@ class NOAA_Forecast(__MODEL__):
         try:
             if hasattr(self,'key'):
                 groupNames = glob(f'{self.tempGRIB}/{self.key}/*{group}*')
+                fhr = array(sorted(list(set([n.split('.')[4] for n in groupNames]))))
             elif self.processFiles:
                 groupNames = [glob(f'{self.tempGRIB}/{pf}/*{group}*')
                                  for pf in self.processFiles]
                 groupNames = [j for i in groupNames for j in i]
-            print(f'Loading Group: {group}')
-            fhr = array(sorted(list(set([n.split('.')[4] for n in groupNames]))))
+                fhr = array(sorted(list(set([n.split('.')[3] for n in groupNames]))))
 
+            print(f'Loading Group: {group}')
+            print(groupNames[0].split('.'))
+            
             for name in tqdm(groupNames):
                 ds = open_dataset(name, engine='cfgrib')
                 with File(self.h5fname, 'a') as hdf:

@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 
 from numpy import array, string_, zeros_like, pi, int64, unique, abs, arctan2, mean, datetime64, sum, cos, argwhere, sin, zeros
+from random import choice
 from numba import jit, typeof, float64, int32
 from abc import ABCMeta, abstractmethod
 from pandas import to_datetime, to_timedelta, date_range, DatetimeIndex, DataFrame
@@ -29,13 +30,17 @@ class __POWERSERIES__(object):
         if 'resultDB' in list(self.kwargs.keys()): 
             self.resultDB = self.kwargs['resultDB']
         if 'Hs' not in list(self.kwargs.keys()):
-            self.h0 = 'swh'
+            self.h0 = ['swh']
         else:
-            self.h0 = self.kwargs['Hs']
+            self.h0 = list(self.kwargs['Hs'])
         if 'Tp' not in list(self.kwargs.keys()):
-            self.te = 'perpw'
+            self.te = ['perpw']
         else:
-            self.te = self.kwargs['Tp']
+            self.te = list(self.kwargs['Tp'])
+        if 'deg' not in list(self.kwargs.keys()):
+            self.deg = '0'
+        else:
+            self.deg = self.kwargs['deg']
         if 'tempFFTFiles' not in list(self.kwargs.keys()):
             self.tempFFT = f'./tempFFTFile.h5'
         else:
@@ -80,8 +85,10 @@ class buoy(object):
             with File(self.db,'r') as hdf:
                 self.buoys = list(hdf.keys())
 
-        if 'variables' in list(self.kwargs.keys()):
-            self.variables = list(self.kwargs['variables'])
+        if 'WEC_variable' in list(self.kwargs.keys()):
+            self.WEC_var = self.kwargs['WEC_variable']
+        else:
+            self.WEC_var = 'Power'
         
         if 'freq' not in list(self.kwargs.keys()):
             self.freq = self.kwargs['freq']
@@ -114,6 +121,10 @@ class buoy(object):
             self.te = 'DWP'
         else:
             self.te = self.kwargs['Tp']
+        if 'deg' not in list(self.kwargs.keys()):
+            self.deg = '0'
+        else:
+            self.deg = self.kwargs['deg']
         if 'tempFFTFiles' not in list(self.kwargs.keys()):
             self.tempFFT = f'./tempFFTFile_buoy.h5'
         else:
@@ -135,15 +146,21 @@ class buoy(object):
                     yield hdf[b]
 
     def calculate_seaStates(self, *args, **kwargs):
-        def find_ss(x, ss):
+        def find_ss(x, ss, seeds):
+            seed = choice(seeds)
             Hs = abs(x['Hs'] - ss['Hs'].values).argmin()
             Tp = abs(x['Tp'] - ss['Tp'].values).argmin()
-            return f'Hs_{ss["Hs"].values[Hs]}/Tp_{ss["Tp"].values[Tp]}'
+            return f'{seed}/Hs_{ss["Hs"].values[Hs]}/Tp_{ss["Tp"].values[Tp]}'
 
         with File(self.ws, 'r') as ws:
-            self.keys = DataFrame({f'{hs}/{tp}':[float(hs[3::]), float(tp[3::])]
-                                for hs in ws.keys() for tp in ws[hs].keys()},
-                                index = ['Hs', 'Tp']).T
+            sskeys = {}
+            seeds = list(ws.keys())
+            for seed in ws.keys():
+                for hs in ws[f'{seed}'].keys():
+                    for tp in ws[f'{seed}/{hs}'].keys():
+                        sskeys[f'{seed}/{hs}/{tp}'] = [float(hs[3::]), float(tp[3::])]
+                                
+        self.keys = DataFrame(sskeys,index = ['Hs', 'Tp']).T
 
         self.get_times()
         with File(self.db, 'r') as hdf:
@@ -151,14 +168,14 @@ class buoy(object):
                 data = array([self.times[b], hdf.get(f'{b}/{self.te}'),
                                  hdf.get(f'{b}/{self.h0}')]).T
                 df = DataFrame(data, columns = ['time', 'Tp', 'Hs'])
-                df['fftKey'] = df.apply(find_ss, axis=1, args=(self.keys,))
+                df['fftKey'] = df.apply(find_ss, axis=1, args=(self.keys,seeds,))
                 self.seaState[b] = df
 
     def calculate_ffts(self, *args, **kwargs):
         with File(self.ws, 'r') as ws:
             for b in tqdm(self.buoys):
                 for x in self.seaState[b]['fftKey'].unique():
-                    time, data = ws[f'{x}/Time'][:], ws[f'{x}/Power'][:]
+                    time, data = ws[f'{x}/Time'][:], ws[f'{x}/{self.WEC_var}'][:]
                     coefs, freq = fft(data), fftfreq(time.shape[0], d=time[1]-time[0])
                     try:
                         with File(self.tempFFT,'a') as tmpSave:
@@ -179,21 +196,22 @@ class buoy(object):
             self.recon_times[b] = dff
 
     def reconstruct_powerseries(self, *args, **kwargs):
-        def reconstruct(item):
-            with File(self.tempFFT, 'r') as fft:
-                coef, freq, t = (fft[item['fftKey']]['coefficients'][:],
-                                 fft[item['fftKey']]['frequency'][:],
-                                 item['fcInts'])
-                shape = coef.shape[0]
-            Sum = sum(coef.real*cos(2*pi*freq*t)+coef.imag*sin(2*pi*freq*t))
-            return (1/shape)*Sum
+        
+        @jit(nopython = True)
+        def reconstruct(coef,freq,t):
+            return sum(coef.real*cos(2*pi*freq*t)+coef.imag*sin(2*pi*freq*t))
 
         for b in self.buoys:
             result = zeros(self.recon_times[b].shape[0])
             j = 0
-            for i, item in tqdm(self.recon_times[b].iterrows()):
-                result[j] = reconstruct(item)
-                j += 1
+            with File(self.tempFFT, 'r') as fft:
+                for i, item in tqdm(self.recon_times[b].iterrows()):
+                    coef, freq, t = (fft[item['fftKey']]['coefficients'][:],
+                                 fft[item['fftKey']]['frequency'][:],
+                                 item['fcInts'])
+                    print(coef.shape,freq.shape,t.shape)
+                    result[j] = (1/coef.shape[0])*reconstruct(coef,freq,t)
+                    j += 1
             try:
                 saveTimes = string_([t.encode('utf-8')
                             for t in self.recon_times[b].index.strftime('%Y-%m-%d %H:%M:%S')])
@@ -220,11 +238,22 @@ class forecast(__POWERSERIES__):
 
     def calculate_seaStates(self, *args, **kwargs):
         with File(self.db, 'r') as hdf:
+            print(hdf.keys())
             with File(self.ws, 'r') as ws:
                 for model in hdf.keys():
                     for t0 in hdf[model]:
+                        print(t0)
+                        '''
                         h0, te = (hdf[model][t0][self.h0],
                                   hdf[model][t0][self.te])
+                        '''
+                        print(hdf[model][t0].keys())
+                        h0 = [hdf[model][t0][h0] for h0 in self.h0]
+                        te = [hdf[model][t0][te] for te in self.te]
+                        deg = [hdf[model][t0][d] for d in self.deg]
+                        
+                        print(h0[0],te,deg)
+                        
                         if 'Tp' in ws.attrs.keys() and 'Hs' in ws.attrs.keys():
                             pass
                         else:
@@ -235,6 +264,7 @@ class forecast(__POWERSERIES__):
                         self.seaState[f'{model}/{t0}'] = [(Hs[abs(HsVal - j[0]).argmin()],
                                                            Tp[abs(TpVal - j[1]).argmin()])
                                                            for i, j in enumerate(zip(h0, te))]
+                        
 
     def calculate_ffts(self, *args, **kwargs):
         def powers2(shape):
@@ -289,7 +319,6 @@ class forecast(__POWERSERIES__):
 
     def reconstruct_powerseries(self, *args, **kwargs):
         @jit(nopython = True)
-
         def recon(A, f, t):
             return sum(A.real*cos(2*pi*f*t) + A.imag*sin(2*pi*f*t))
 
@@ -332,7 +361,10 @@ def forecast_powerseries(db, wecSim, *args, **kwargs):
     f.calculate_ffts()
     f.set_times()
     f.reconstruct_powerseries()
-
+    
+def multi_sea_powerseries(db, wecSim, *args, **kwargs):
+    f = forecast(db, wecSim, *args, **kwargs)
+    f.calculate_seaStates()
 
 def buoy_powerseries(db, wecSim, *args, **kwargs):
     b = buoy(db, wecSim, *args, **kwargs)
