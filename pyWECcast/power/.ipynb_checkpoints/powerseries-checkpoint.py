@@ -163,23 +163,23 @@ def construct_powerseries(timestamps,freq,Hs,Tp,Dir=None,nWECs=1,fft_matrix=f'./
     
     timestamps : datetimeIndex
         timestamps associated with the reconstruction times
+    freq : str
+        tiem frequency of the returned dataset
     Hs : float64 ndarray[:]
-        array of waveheights available in the WECSim database
+        array of wave heights available in the WECSim database
     Tp : float64 ndarray[:]
         array of wave periods available in the WECSim database
     Dir : optional float64 ndarray[:]
         array of wave direction available in teh WECSim database
-    fftFname : optional str
-        filename to save the fft coeffients and frequencies on disk
+    nWECs : int
+        number of wecs to build into the reconstruction
+    fft_matrix : str / dict
+        filename or in memory data containing fft coeffients and frequencies on disk
+    recFile : optional str
+        filename to save the reconstructed data on disk
     inMemory : optional boolean default:False
         option the hold the fft coefficients and frequencies in active memory and return,
         fft file will not be saved if True
-    WS_Time : optional str
-        WECSim time variable name in database
-    WS_variable : optional str
-        WECSim variable name to use in FFT
-    cutoff : optional int
-        Number of values to remove for the start of the timeseries
         
     Returns:
         dict : (coefficients complex128 ndarray[:], frequencies float64 ndarray[:])
