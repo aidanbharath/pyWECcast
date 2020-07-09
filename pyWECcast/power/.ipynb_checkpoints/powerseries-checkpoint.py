@@ -223,8 +223,9 @@ def construct_powerseries(timestamps,freq,Hs,Tp,Dir=None,nWECs=1,fft_matrix=f'./
                     recon.create_dataset(f'reconstruction', data=construct, dtype=construct.dtype,
                                         chunks=True,maxshape=(None,construct.shape[-1]))
             else:
-                results = vstack([results,construct])
-                time = hstack([time, times])
+                results = construct
+                time = times
+            
         else:
             if not inMemory:
                 with File(recFile, 'a') as recon:
@@ -234,9 +235,9 @@ def construct_powerseries(timestamps,freq,Hs,Tp,Dir=None,nWECs=1,fft_matrix=f'./
                     recon['reconstruction'].resize((recon['reconstruction'].shape[0] + construct.shape[0]), axis = 0)
                     recon['reconstruction'][-construct.shape[0]:] = construct
             else:
-                results = construct
-                time = times
-            
+                results = vstack([results,construct])
+                time = hstack([time, times])
+                
         
     if inMemory: return results, time
             
