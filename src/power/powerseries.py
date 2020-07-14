@@ -5,15 +5,15 @@ from numpy import int64 as i64
 from numpy import float64 as f64
 from scipy.spatial import cKDTree
 from scipy.fft import fft, fftfreq
-from numba import njit, typeof, prange, float64, complex128, int64
+from numba import njit, typeof, prange, float64, complex128, int64, b1
 from pandas import date_range
 from random import randint
 from tqdm import tqdm
 
 
-@njit(['float64[:,:](complex128[:,:],float64[:],float64[:],float64[:,:],int64,int64)'],
+@njit(['float64[:,:](complex128[:,:],float64[:],float64[:],float64[:,:],int64,int64,b1)'],
          nogil=True,parallel=True)
-def __reconstruction__(spectrum,frequency,times,result,lntime,nWECs):
+def __reconstruction__(spectrum,frequency,times,result,lntime,nWECs,inPhase):
     
     """
         Parameters
@@ -36,9 +36,10 @@ def __reconstruction__(spectrum,frequency,times,result,lntime,nWECs):
                 reconstruction array
     """
     for j in range(nWECs):
-    #for i in prange(lntime):
-        rInt = randint(0,1e8)
-        #for j in range(nWECs):
+        if not inPhase:
+            rInt = randint(0,1e8)
+        else:
+            rInt = 0
         for i in prange(lntime):
             Cos = cos(2*pi*frequency*(times[i]+rInt))
             Sin = sin(2*pi*frequency*(times[i]+rInt))
@@ -156,7 +157,7 @@ def calculate_fft_matrix(WECSim, Hs, Tp, Dir=None, fftFname=f'./tempFFT.h5', inM
     
     
 def construct_powerseries(timestamps,freq,Hs,Tp,Dir=None,fft_matrix=f'./tempFFT.h5',
-                         recFile=f'./tempRecon.h5',inMemory=False):
+                         recFile=f'./tempRecon.h5',inMemory=False,inPhase=False):
        
     """
     Parameters:
@@ -202,7 +203,7 @@ def construct_powerseries(timestamps,freq,Hs,Tp,Dir=None,fft_matrix=f'./tempFFT.
                 cShape = coefs.shape[-1]
                 construct = zeros([times.shape[0],cShape],dtype=f64)
                 N = 1/coefs.shape[0]
-                construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape)
+                construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape,inPhase)
         
             else:
                 with File(fft_matrix,'r') as ws:
@@ -212,7 +213,7 @@ def construct_powerseries(timestamps,freq,Hs,Tp,Dir=None,fft_matrix=f'./tempFFT.
                 cShape = coefs.shape[-1]
                 construct = zeros([times.shape[0],cShape],dtype=f64)
                 N = 1/coefs.shape[0]
-                construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape)
+                construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape,inPhase)
                 
         else:
             pass

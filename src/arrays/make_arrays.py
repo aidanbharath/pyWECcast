@@ -4,9 +4,7 @@ from numpy import complex128, zeros, outer
 from h5py import File
 
 
-
-
-def multiple_wecs(nWECs,fft_matrix=None):
+def multiple_realizations(nWECs,fft_matrix=None):
     """
     
     Parameters:
