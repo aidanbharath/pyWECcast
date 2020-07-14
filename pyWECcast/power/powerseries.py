@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 
-from numpy import array, string_, zeros_like, pi, int64, unique, abs, arctan2, mean, datetime64, sum, cos, argwhere, sin, zeros
+from numpy import abs, amin, arctan2, argwhere, array, cos, datetime64, int64, mean, pi, sin, squeeze, string_, sum, unique, where, zeros, zeros_like
 from random import choice
 from numba import jit, typeof, float64, int32
 from abc import ABCMeta, abstractmethod
@@ -27,7 +27,7 @@ class __POWERSERIES__(object):
             self.ws = args[0]
         else:
             self.ws = None
-        if 'resultDB' in list(self.kwargs.keys()): 
+        if 'resultDB' in list(self.kwargs.keys()):
             self.resultDB = self.kwargs['resultDB']
         if 'Hs' not in list(self.kwargs.keys()):
             self.h0 = ['swh']
@@ -50,7 +50,7 @@ class __POWERSERIES__(object):
         else:
             self.time_var = self.kwargs['time_var']
         if 'variable' not in list(self.kwargs.keys()):
-            self.var = 'Power'
+            self.var = 'MechPower'
         else:
             self.var = self.kwargs['variable']
         if 'freq_limit' not in list(self.kwargs.keys()):
@@ -88,8 +88,8 @@ class buoy(object):
         if 'WEC_variable' in list(self.kwargs.keys()):
             self.WEC_var = self.kwargs['WEC_variable']
         else:
-            self.WEC_var = 'Power'
-        
+            self.WEC_var = 'MechPower'
+
         if 'freq' not in list(self.kwargs.keys()):
             self.freq = self.kwargs['freq']
         else:
@@ -109,7 +109,7 @@ class buoy(object):
             self.ws = args[0]
         else:
             self.ws = None
-        if 'resultDB' in list(self.kwargs.keys()): 
+        if 'resultDB' in list(self.kwargs.keys()):
             self.resultDB = self.kwargs['resultDB']
         else:
             self.resultDB = 'tempBuoyResults.h5'
@@ -147,10 +147,37 @@ class buoy(object):
 
     def calculate_seaStates(self, *args, **kwargs):
         def find_ss(x, ss, seeds):
+            # select a random seed
             seed = choice(seeds)
-            Hs = abs(x['Hs'] - ss['Hs'].values).argmin()
-            Tp = abs(x['Tp'] - ss['Tp'].values).argmin()
-            return f'{seed}/Hs_{ss["Hs"].values[Hs]}/Tp_{ss["Tp"].values[Tp]}'
+            # get difference between given Hs and available WEC-Sim Hs entries
+            HsDiffs = abs(x['Hs'] - ss['Hs'].values)
+            # get ss['Hs'] indices for closest matches
+            HsIxs = where(HsDiffs == HsDiffs.min())[0]
+            # check if there are 2 Hs candidates
+            HsValFirst = ss['Hs'].values[HsIxs][0]
+            HsValLast = ss['Hs'].values[HsIxs][-1]
+            if HsValFirst != HsValLast:
+                # select one of the two Hs values randomly
+                HsVal = choice([HsValFirst, HsValLast])
+                # get updated Hs indices for selected Hs value
+                HsValIxs = where(ss['Hs'].values == HsVal)[0]
+            else:
+                HsVal = HsValFirst
+                HsValIxs = HsIxs
+            # get the differences between desired Tp and available Tp values (for selected Hs)
+            TpDiff = abs(x['Tp'] - ss['Tp'].values[HsValIxs])
+            # get Hs indices for closest Tp matches
+            TpIxsHs = where(TpDiff == TpDiff.min())[0]
+            # get ss['Tp'] indices for closest Tp matches
+            TpIxs = HsValIxs[TpIxsHs]
+            # when two Tp vals are equidistant from desired Tp, select randomly
+            if len(TpIxs)>1:
+                TpIx = choice(squeeze(TpIxs))
+            else:
+                TpIx = squeeze(TpIxs[0])
+            # get the closest Tp value
+            TpVal = ss['Tp'].values[TpIx]
+            return f'{seed}/Hs_{HsVal}/Tp_{TpVal}'
 
         with File(self.ws, 'r') as ws:
             sskeys = {}
@@ -159,7 +186,7 @@ class buoy(object):
                 for hs in ws[f'{seed}'].keys():
                     for tp in ws[f'{seed}/{hs}'].keys():
                         sskeys[f'{seed}/{hs}/{tp}'] = [float(hs[3::]), float(tp[3::])]
-                                
+
         self.keys = DataFrame(sskeys,index = ['Hs', 'Tp']).T
 
         self.get_times()
@@ -168,14 +195,14 @@ class buoy(object):
                 data = array([self.times[b], hdf.get(f'{b}/{self.te}'),
                                  hdf.get(f'{b}/{self.h0}')]).T
                 df = DataFrame(data, columns = ['time', 'Tp', 'Hs'])
-                df['fftKey'] = df.apply(find_ss, axis=1, args=(self.keys,seeds,))
+                df['fftKey'] = df.apply(find_ss, axis=1, args=(self.keys,seeds))
                 self.seaState[b] = df
 
     def calculate_ffts(self, *args, **kwargs):
         with File(self.ws, 'r') as ws:
             for b in tqdm(self.buoys):
                 for x in self.seaState[b]['fftKey'].unique():
-                    time, data = ws[f'{x}/Time'][:], ws[f'{x}/{self.WEC_var}'][:]
+                    time, data = ws[f'{x}//Time'][:], ws[f'{x}//MechPower'][0,:]
                     coefs, freq = fft(data), fftfreq(time.shape[0], d=time[1]-time[0])
                     try:
                         with File(self.tempFFT,'a') as tmpSave:
@@ -196,7 +223,6 @@ class buoy(object):
             self.recon_times[b] = dff
 
     def reconstruct_powerseries(self, *args, **kwargs):
-        
         @jit(nopython = True)
         def reconstruct(coef,freq,t):
             return sum(coef.real*cos(2*pi*freq*t)+coef.imag*sin(2*pi*freq*t))
@@ -209,7 +235,7 @@ class buoy(object):
                     coef, freq, t = (fft[item['fftKey']]['coefficients'][:],
                                  fft[item['fftKey']]['frequency'][:],
                                  item['fcInts'])
-                    print(coef.shape,freq.shape,t.shape)
+                    # print(coef.shape,freq.shape,t.shape)
                     result[j] = (1/coef.shape[0])*reconstruct(coef,freq,t)
                     j += 1
             try:
@@ -242,18 +268,18 @@ class forecast(__POWERSERIES__):
             with File(self.ws, 'r') as ws:
                 for model in hdf.keys():
                     for t0 in hdf[model]:
-                        print(t0)
+                        #print(t0)
                         '''
                         h0, te = (hdf[model][t0][self.h0],
                                   hdf[model][t0][self.te])
                         '''
-                        print(hdf[model][t0].keys())
+                        #print(hdf[model][t0].keys())
                         h0 = [hdf[model][t0][h0] for h0 in self.h0]
                         te = [hdf[model][t0][te] for te in self.te]
                         deg = [hdf[model][t0][d] for d in self.deg]
-                        
-                        print(h0[0],te,deg)
-                        
+
+                        #print(h0[0],te,deg)
+
                         if 'Tp' in ws.attrs.keys() and 'Hs' in ws.attrs.keys():
                             pass
                         else:
@@ -264,7 +290,6 @@ class forecast(__POWERSERIES__):
                         self.seaState[f'{model}/{t0}'] = [(Hs[abs(HsVal - j[0]).argmin()],
                                                            Tp[abs(TpVal - j[1]).argmin()])
                                                            for i, j in enumerate(zip(h0, te))]
-                        
 
     def calculate_ffts(self, *args, **kwargs):
         def powers2(shape):
@@ -338,7 +363,7 @@ class forecast(__POWERSERIES__):
                         data = fftFile[fftkey]
                         A,f = (data['Amplitude'][:],data['frequency'][:])
                         result[i] = (1/A.shape[0])*recon(A,f,fcInts[i])
-                    saveTimes = string_([t.encode('utf-8') 
+                    saveTimes = string_([t.encode('utf-8')
                                         for t in fcTimes.strftime('%Y-%m-%d %H:%M:%S')])
                     grp.create_dataset('time_index', data=saveTimes, dtype=saveTimes.dtype)
                     grp.create_dataset('powerseries', data=result, dtype=result.dtype)
@@ -361,14 +386,17 @@ def forecast_powerseries(db, wecSim, *args, **kwargs):
     f.calculate_ffts()
     f.set_times()
     f.reconstruct_powerseries()
-    
+
+
 def multi_sea_powerseries(db, wecSim, *args, **kwargs):
     f = forecast(db, wecSim, *args, **kwargs)
     f.calculate_seaStates()
 
+
 def buoy_powerseries(db, wecSim, *args, **kwargs):
     b = buoy(db, wecSim, *args, **kwargs)
     b.calculate_seaStates()
+    #print(b.seaState)
     b.calculate_ffts()
     b.set_times()
     b.reconstruct_powerseries()

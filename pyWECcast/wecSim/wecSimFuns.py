@@ -101,8 +101,8 @@ def wecsim_mats_to_hdf(wecSimDatDir, modelName, outputDir=None, compression=None
         seed = mat['mcr']['Seed'][0,0]
         Hs = mat['mcr']['H'][0,0]
         Tp = mat['mcr']['T'][0,0]
-        power = mat['mcr']['Power'][2,:]
-        time = mat['#refs#']['F']['time'][0,:]
+        power = mat['mcr']['Power'][:]
+        time = mat['mcr']['Time'][:]
         with h5.File(dbName, 'a') as hdf:
             hdf.create_dataset(f'Seed_{seed}/Hs_{Hs}/Tp_{Tp}/MechPower', data=power*-1, compression=compression) # N.B. -1
             hdf.create_dataset(f'Seed_{seed}/Hs_{Hs}/Tp_{Tp}/Time', data=time, compression=compression)
