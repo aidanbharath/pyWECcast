@@ -195,7 +195,7 @@ def construct_powerseries(timestamps,freq,Hs,Tp,Dir=None,fft_matrix=f'./tempFFT.
         ffts = f'Hs_{Hs[i]}/Tp_{Tp[i]}/coefficients'
         freqs = f'Hs_{Hs[i]}/Tp_{Tp[i]}/frequency'
         
-        if not Dir:
+        if Dir is None:
             if type(fft_matrix) is not type(''):
                 coefs, f = fft_matrix[ffts], fft_matrix[freqs]
                 if len(coefs.shape) == 1:
@@ -216,7 +216,26 @@ def construct_powerseries(timestamps,freq,Hs,Tp,Dir=None,fft_matrix=f'./tempFFT.
                 construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape,inPhase)
                 
         else:
-            pass
+            if type(fft_matrix) is not type(''):
+                coefs, f = fft_matrix[ffts], fft_matrix[freqs]
+                if len(coefs.shape) == 1:
+                    coefs = coefs[:,newaxis]
+                ceofs = Dir[i,:]*coefs
+                cShape = coefs.shape[-1]
+                construct = zeros([times.shape[0],cShape],dtype=f64)
+                N = 1/coefs.shape[0]
+                construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape,inPhase)
+        
+            else:
+                with File(fft_matrix,'r') as ws:
+                    coefs, f = ws[ffts][:], ws[freqs][:]
+                if len(coefs.shape) == 1:
+                    coefs = coefs[:,newaxis]
+                ceofs = Dir[i,:]*coefs
+                cShape = coefs.shape[-1]
+                construct = zeros([times.shape[0],cShape],dtype=f64)
+                N = 1/coefs.shape[0]
+                construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape,inPhase)
         
         
         if i == 0:
