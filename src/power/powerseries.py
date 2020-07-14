@@ -155,7 +155,7 @@ def calculate_fft_matrix(WECSim, Hs, Tp, Dir=None, fftFname=f'./tempFFT.h5', inM
         return results
     
     
-def construct_powerseries(timestamps,freq,Hs,Tp,Dir=None,nWECs=1,fft_matrix=f'./tempFFT.h5',
+def construct_powerseries(timestamps,freq,Hs,Tp,Dir=None,fft_matrix=f'./tempFFT.h5',
                          recFile=f'./tempRecon.h5',inMemory=False):
        
     """
@@ -189,7 +189,6 @@ def construct_powerseries(timestamps,freq,Hs,Tp,Dir=None,nWECs=1,fft_matrix=f'./
     
     for i in tqdm(range(timestamps.shape[0]-1)):    
         times = date_range(timestamps[i], timestamps[i+1], freq=freq)[:-1]
-        construct = zeros([times.shape[0],nWECs],dtype=f64)
         intTimes = array(times.astype(i64)/10**9)
         lnTime = intTimes.shape[0]
         ffts = f'Hs_{Hs[i]}/Tp_{Tp[i]}/coefficients'
@@ -200,16 +199,20 @@ def construct_powerseries(timestamps,freq,Hs,Tp,Dir=None,nWECs=1,fft_matrix=f'./
                 coefs, f = fft_matrix[ffts], fft_matrix[freqs]
                 if len(coefs.shape) == 1:
                     coefs = coefs[:,newaxis]
+                cShape = coefs.shape[-1]
+                construct = zeros([times.shape[0],cShape],dtype=f64)
                 N = 1/coefs.shape[0]
-                construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,nWECs)
+                construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape)
         
             else:
                 with File(fft_matrix,'r') as ws:
                     coefs, f = ws[ffts][:], ws[freqs][:]
                 if len(coefs.shape) == 1:
                     coefs = coefs[:,newaxis]
+                cShape = coefs.shape[-1]
+                construct = zeros([times.shape[0],cShape],dtype=f64)
                 N = 1/coefs.shape[0]
-                construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,nWECs)
+                construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape)
                 
         else:
             pass

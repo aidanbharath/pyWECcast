@@ -1,9 +1,6 @@
 from h5py import File
 
 
-
-
-
 def extract_NOAA_buoy(filename,buoyNum,Hs,Tp,Dir=None):
     """
     Parameters:
