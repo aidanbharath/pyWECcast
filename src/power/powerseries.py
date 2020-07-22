@@ -5,9 +5,10 @@ from numpy import int64 as i64
 from numpy import float64 as f64
 from scipy.spatial import cKDTree
 from scipy.fft import fft, fftfreq
-from numba import njit, typeof, prange, float64, complex128, int64, b1
+from numba import njit, typeof, prange, float64, complex128, int64, b1, optional, intp
+from numba.types.misc import Omitted
 from pandas import date_range
-from random import randint
+from random import randint, seed
 from tqdm import tqdm
 
 
@@ -30,11 +31,14 @@ def __reconstruction__(spectrum,frequency,times,result,lntime,nWECs,inPhase):
             length of the time output array
         ndeg : int64 int
             length of the direction output array
+        inPhase : boolean 
+            choose if all reconstructions should be in phase or not
             
         Returns:
             result : float64 ndarray[:,:] (times,direction)
                 reconstruction array
     """
+   
     for j in range(nWECs):
         if not inPhase:
             rInt = randint(0,1e8)
@@ -46,8 +50,46 @@ def __reconstruction__(spectrum,frequency,times,result,lntime,nWECs,inPhase):
             s = spectrum[:,j]
             result[i,j] = sum(s.real*Cos+s.imag*Sin)
     return result
+   
 
-
+@njit(['float64[:,:](complex128[:,:],float64[:],float64[:],float64[:,:],int64,int64,int64[:])'],
+         nogil=True,parallel=True)
+def __reconstruction_seed__(spectrum,frequency,times,result,lntime,nWECs,Seed):
+    
+    """
+        Parameters
+        ----------
+        spectrum : complex128 ndarray[:,:] (frequency_components, direction) 
+            Scaled FFT components in the desired directions
+        frequency : float64 ndarray[:] (frequencies)
+            frequency values associated with the spectrum
+        times : float64 ndarray[:] (times)
+            times values associated with the reconstruction
+        result : float64 ndarray[:] (reconstrustion,direction)
+            result array filled during function execution
+        lntime : int64 int 
+            length of the time output array
+        ndeg : int64 int
+            length of the direction output array
+        Seed : int64 ndarray[:] 
+            choose if all reconstructions should be in phase or not
+            
+        Returns:
+            result : float64 ndarray[:,:] (times,direction)
+                reconstruction array
+    """
+   
+    for j in range(nWECs):
+        seed(Seed[j])
+        rInt = randint(0,1e8)
+        for i in prange(lntime):
+            Cos = cos(2*pi*frequency*(times[i]+rInt))
+            Sin = sin(2*pi*frequency*(times[i]+rInt))
+            s = spectrum[:,j]
+            result[i,j] = sum(s.real*Cos+s.imag*Sin)
+    return result
+    
+    
 def link_sea_states(WECSim,Hs,Tp,Dir=None,kdTree=False):
     """
     Parameters:
@@ -158,7 +200,7 @@ def calculate_fft_matrix(WECSim, Hs, Tp, Dir=None, fftFname=f'./tempFFT.h5', inM
     
     
 def construct_powerseries(timestamps,freq,Hs,Tp,Dir=None,fft_matrix=f'./tempFFT.h5',
-                         recFile=f'./tempRecon.h5',inMemory=False,inPhase=False):
+                         recFile=f'./tempRecon.h5',inMemory=False,inPhase=False,Seeds=None):
        
     """
     Parameters:
@@ -182,6 +224,11 @@ def construct_powerseries(timestamps,freq,Hs,Tp,Dir=None,fft_matrix=f'./tempFFT.
     inMemory : optional boolean default:False
         option the hold the fft coefficients and frequencies in active memory and return,
         fft file will not be saved if True
+    inPhase : optional boolean default:False
+        parameter to generate the reconstruction with fixed or random phase values
+    Seeds : optional int64 ndarray[:]
+        seeds to assign to the random phase value, used for repeated random seed generation
+        Length of Seeds must be equal to the nWECs
         
     Returns:
         dict : (coefficients complex128 ndarray[:], frequencies float64 ndarray[:])
@@ -204,7 +251,10 @@ def construct_powerseries(timestamps,freq,Hs,Tp,Dir=None,fft_matrix=f'./tempFFT.
                 cShape = coefs.shape[-1]
                 construct = zeros([times.shape[0],cShape],dtype=f64)
                 N = 1/coefs.shape[0]
-                construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape,inPhase)
+                if Seeds is None:
+                    construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape,inPhase)
+                else:
+                    construct = N*__reconstruction_seed__(coefs,f,intTimes,construct,lnTime,cShape,Seeds)
         
             else:
                 with File(fft_matrix,'r') as ws:
@@ -214,8 +264,11 @@ def construct_powerseries(timestamps,freq,Hs,Tp,Dir=None,fft_matrix=f'./tempFFT.
                 cShape = coefs.shape[-1]
                 construct = zeros([times.shape[0],cShape],dtype=f64)
                 N = 1/coefs.shape[0]
-                construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape,inPhase)
-                
+                if Seeds is None:
+                    construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape,inPhase)
+                else:
+                    construct = N*__reconstruction_seed__(coefs,f,intTimes,construct,lnTime,cShape,Seeds)
+                    
         else:
             if type(fft_matrix) is not type(''):
                 coefs, f = fft_matrix[ffts], fft_matrix[freqs]
@@ -225,8 +278,11 @@ def construct_powerseries(timestamps,freq,Hs,Tp,Dir=None,fft_matrix=f'./tempFFT.
                 cShape = coefs.shape[-1]
                 construct = zeros([times.shape[0],cShape],dtype=f64)
                 N = 1/coefs.shape[0]
-                construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape,inPhase)
-        
+                if Seeds is None:
+                    construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape,inPhase)
+                else:
+                    construct = N*__reconstruction_seed__(coefs,f,intTimes,construct,lnTime,cShape,Seeds)
+                    
             else:
                 with File(fft_matrix,'r') as ws:
                     coefs, f = ws[ffts][:], ws[freqs][:]
@@ -236,8 +292,10 @@ def construct_powerseries(timestamps,freq,Hs,Tp,Dir=None,fft_matrix=f'./tempFFT.
                 cShape = coefs.shape[-1]
                 construct = zeros([times.shape[0],cShape],dtype=f64)
                 N = 1/coefs.shape[0]
-                construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape,inPhase)
-        
+                if Seeds is None:
+                    construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape,inPhase)
+                else:
+                    construct = N*__reconstruction_seed__(coefs,f,intTimes,construct,lnTime,cShape,Seeds)
         
         if i == 0:
             if not inMemory:
