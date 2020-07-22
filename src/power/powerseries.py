@@ -1,6 +1,6 @@
 import os
 from h5py import File
-from numpy import array, abs, zeros, zeros_like, unique, pi, cos, sin, sum, newaxis, vstack, hstack
+from numpy import array, abs, zeros, zeros_like, unique, pi, cos, sin, sum, newaxis, vstack, hstack, where
 from numpy import int64 as i64 
 from numpy import float64 as f64
 from scipy.spatial import cKDTree
@@ -68,11 +68,12 @@ def link_sea_states(WECSim,Hs,Tp,Dir=None,kdTree=False):
             Hs and Tp values corresponding to available simulation in powerseries matrix 
     """
     
+    
     @njit('float64[:,:](float32[:,:],float64[:,:],float64[:,:],int64)',parallel=True,nogil=True)
     def __find_shortest__(values,seas,result,idx):
         for i in prange(idx):
             result[i,0] = seas[abs(values[i,0]-seas[:,0]).argmin(),0]
-            result[i,1] = seas[abs(values[i,1]-seas[:,1]).argmin(),1]
+            result[i,1] = seas[abs(values[i,1]-seas[where(seas[:,0]==result[i,0])[0],1]).argmin(),1]
         return result
             
     
