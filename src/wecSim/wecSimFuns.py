@@ -15,7 +15,7 @@ def group_Hs_Te(ncbuoy, noaabuoy, ds_name, h_rounds=1, t_rounds=0):
         noaa_hc = noaabuoy['WVHT']
         noaa_te = noaabuoy['DPD']
     except KeyError as e:
-        print(f'NOAA Variable DPD no available - Openning APD')
+        print(f'NOAA Variable DPD not available - Openning APD')
         noaa_hc = noaabuoy['WVHT']
         noaa_te = noaabuoy['APD']
 
@@ -55,7 +55,10 @@ def group_Hs_Te(ncbuoy, noaabuoy, ds_name, h_rounds=1, t_rounds=0):
     return [i for i in required if i not in wecSims]
 
 
-def wecsim_mats_to_hdf(wecSimDatDir, modelName, outputDir=None, compression=None):
+def wecsim_mats_to_hdf(wecSimDatDir, modelName, outputDir=None, compression=None,
+                      top_label='mcr',seed_label='Seed',H_label='H',T_label='T',
+                      power_label='Power',ref_label='#refs#',F_label='F',time_label='time',
+                      data_multiplier=-1):
     """Create a single hdf5 file from multiple WEC-Sim .mat output files
 
     Parameters
@@ -98,13 +101,15 @@ def wecsim_mats_to_hdf(wecSimDatDir, modelName, outputDir=None, compression=None
         mat = h5.File(matfile, 'r')
         # variables may need to be changed according to wec-sim .mat output
         # format - this is defined in userDefinedFunctions.m for wecSimMCR
-        seed = mat['mcr']['Seed'][0,0]
-        Hs = mat['mcr']['H'][0,0]
-        Tp = mat['mcr']['T'][0,0]
-        power = mat['mcr']['Power'][2,:]
-        time = mat['#refs#']['F']['time'][0,:]
+        # Made setable in kwargs
+        seed = mat[top_label][seed_label][0,0]
+        Hs = mat[top_label][H_label][0,0]
+        Tp = mat[top_label][T_label][0,0]
+        power = mat[top_label][power_label][2,:]
+        time = mat[ref_label][F_label][time_label][0,:]
         with h5.File(dbName, 'a') as hdf:
-            hdf.create_dataset(f'Seed_{seed}/Hs_{Hs}/Tp_{Tp}/MechPower', data=power*-1, compression=compression) # N.B. -1
+            hdf.create_dataset(f'Seed_{seed}/Hs_{Hs}/Tp_{Tp}/MechPower', data=power*data_multiplier,
+                               compression=compression) # N.B. -1
             hdf.create_dataset(f'Seed_{seed}/Hs_{Hs}/Tp_{Tp}/Time', data=time, compression=compression)
             # define attributes
             seedList = list(hdf.keys())
