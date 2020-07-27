@@ -123,13 +123,12 @@ def link_sea_states(WECSim,Hs,Tp,Dir=None,kdTree=False,Seed=None):
     if not Dir:
         seas, seedlist = [], []
         with File(WECSim,'r') as pMatrix:
-            for i in range(3): ## testing only
-                for seedName in pMatrix.keys():
-                    seas.append(array([[float(hs[3::]),float(tp[3::])] 
-                                for hs in pMatrix[seedName].keys() 
-                                  for tp in pMatrix[seedName][hs].keys()]
-                                ))
-                    seedlist.append(seedName)
+            for seedName in pMatrix.keys():
+                seas.append(array([[float(hs[3::]),float(tp[3::])] 
+                            for hs in pMatrix[seedName].keys() 
+                              for tp in pMatrix[seedName][hs].keys()]
+                            ))
+                seedlist.append(seedName)
         
         # Equal sea-state check between seeds
         check = array(seas).sum(axis=1)
