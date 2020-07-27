@@ -58,7 +58,7 @@ def group_Hs_Te(ncbuoy, noaabuoy, ds_name, h_rounds=1, t_rounds=0):
 def wecsim_mats_to_hdf(wecSimDatDir, modelName, outputDir=None, compression=None,
                       top_label='mcr',seed_label='Seed',H_label='H',T_label='T',
                       power_label='Power',ref_label='#refs#',F_label='F',time_label='time',
-                      data_multiplier=-1):
+                      data_multiplier=-1,varName=f'MechPower'):
     """Create a single hdf5 file from multiple WEC-Sim .mat output files
 
     Parameters
@@ -108,7 +108,7 @@ def wecsim_mats_to_hdf(wecSimDatDir, modelName, outputDir=None, compression=None
         power = mat[top_label][power_label][2,:]
         time = mat[ref_label][F_label][time_label][0,:]
         with h5.File(dbName, 'a') as hdf:
-            hdf.create_dataset(f'Seed_{seed}/Hs_{Hs}/Tp_{Tp}/MechPower', data=power*data_multiplier,
+            hdf.create_dataset(f'Seed_{seed}/Hs_{Hs}/Tp_{Tp}/{varName}', data=power*data_multiplier,
                                compression=compression) # N.B. -1
             hdf.create_dataset(f'Seed_{seed}/Hs_{Hs}/Tp_{Tp}/Time', data=time, compression=compression)
             # define attributes
