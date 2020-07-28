@@ -193,7 +193,7 @@ def calculate_fft_matrix(WECSim, Hs, Tp, seedlist, Dir=None, fftFname=f'./tempFF
         uni = unique([i for i in zip(Hs,Tp)],axis=0)
         for seed in seedlist:
             for i in range(uni.shape[0]):
-                label = f'{seed}/Hs_{uni[i,0]}/Tp_{uni[i,1]}'
+                label = f'{seed}/Hs_{uni[i,0]:.2f}/Tp_{uni[i,1]:.2f}'
                 with File(WECSim,'r') as ws:
                     print(label)
                     print(WS_time)
@@ -265,8 +265,8 @@ def construct_powerseries(timestamps,freq,Hs,Tp,seedlist,Dir=None,fft_matrix=f'.
         lnTime = intTimes.shape[0]
         seed(WSseed)
         Choice = choice(seedlist)
-        ffts = f'{Choice}/Hs_{Hs[i]}/Tp_{Tp[i]}/coefficients'
-        freqs = f'{Choice}/Hs_{Hs[i]}/Tp_{Tp[i]}/frequency'
+        ffts = f'{Choice}/Hs_{Hs[i]:.2f}/Tp_{Tp[i]:.2f}/coefficients'
+        freqs = f'{Choice}/Hs_{Hs[i]:.2f}/Tp_{Tp[i]:.2f}/frequency'
         
         if Dir is None:
             if type(fft_matrix) is not type(''):
