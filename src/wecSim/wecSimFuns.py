@@ -98,15 +98,15 @@ def wecsim_mats_to_hdf(wecSimDatDir, modelName, outputDir=None, compression=None
 
     # create hdf5 file from separate .mat files
     for matfile in glob(join(wecSimDatDir, files)):
-        mat = h5.File(matfile, 'r')
-        # variables may need to be changed according to wec-sim .mat output
-        # format - this is defined in userDefinedFunctions.m for wecSimMCR
-        # Made setable in kwargs
-        seed = mat[top_label][seed_label][0,0]
-        Hs = round(mat[top_label][H_label][0,0],2)
-        Tp = round(mat[top_label][T_label][0,0],2)
-        power = mat[top_label][power_label][0,:]
-        time = mat[top_label][time_label][0,:]
+        with h5.File(matfile, 'r') as mat: #shifted to a context managed approach
+            # variables may need to be changed according to wec-sim .mat output
+            # format - this is defined in userDefinedFunctions.m for wecSimMCR
+            # Made setable in kwargs
+            seed = mat[top_label][seed_label][0,0]
+            Hs = round(mat[top_label][H_label][0,0],2)
+            Tp = round(mat[top_label][T_label][0,0],2)
+            power = mat[top_label][power_label][0,:]
+            time = mat[top_label][time_label][0,:]
         with h5.File(dbName, 'a') as hdf:
             hdf.create_dataset(f'Seed_{seed}/Hs_{Hs}/Tp_{Tp}/{varName}', data=power*power_multiplier,
                                compression=compression) # N.B. -1
