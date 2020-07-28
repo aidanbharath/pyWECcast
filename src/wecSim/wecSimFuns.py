@@ -106,7 +106,6 @@ def wecsim_mats_to_hdf(wecSimDatDir, modelName, outputDir=None, compression=None
         Hs = round(mat[top_label][H_label][0,0],2)
         Tp = round(mat[top_label][T_label][0,0],2)
         power = mat[top_label][power_label][0,:]
-        print(power.shape,power.mean())
         time = mat[ref_label][F_label][time_label][0,:]
         with h5.File(dbName, 'a') as hdf:
             hdf.create_dataset(f'Seed_{seed}/Hs_{Hs}/Tp_{Tp}/{varName}', data=power*data_multiplier,

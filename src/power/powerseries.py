@@ -195,6 +195,9 @@ def calculate_fft_matrix(WECSim, Hs, Tp, seedlist, Dir=None, fftFname=f'./tempFF
             for i in range(uni.shape[0]):
                 label = f'{seed}/Hs_{uni[i,0]}/Tp_{uni[i,1]}'
                 with File(WECSim,'r') as ws:
+                    print(label)
+                    print(WS_time)
+                    print(WS_variable)
                     time = ws[label][WS_time][cutoff:]
                     variable = ws[label][WS_variable][cutoff:]
                 if not inMemory:
