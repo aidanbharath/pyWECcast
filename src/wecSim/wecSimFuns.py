@@ -59,7 +59,7 @@ def group_Hs_Te(ncbuoy, noaabuoy, ds_name, h_rounds=1, t_rounds=0):
 def wecsim_mats_to_hdf(wecSimDatDir, modelName, outputDir=None, compression=None,
                        top_label='mcr', seed_label='Seed', H_label='H',
                        T_label='T', power_label='Power', time_label='Time',
-                       power_multiplier=1.0, varName=f'MechPower'):
+                       power_multiplier=1.0, varName=f'Power'):
     """Create a single .hdf5 file from multiple WEC-Sim .mat output files
 
     Parameters
