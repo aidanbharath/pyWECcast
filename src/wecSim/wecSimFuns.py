@@ -1,4 +1,5 @@
 import os
+import sys
 import subprocess
 import threading
 import numpy as np
@@ -56,10 +57,10 @@ def group_Hs_Te(ncbuoy, noaabuoy, ds_name, h_rounds=1, t_rounds=0):
 
 
 def wecsim_mats_to_hdf(wecSimDatDir, modelName, outputDir=None, compression=None,
-                      top_label='mcr',seed_label='Seed',H_label='H',T_label='T',
-                      power_label='Power',time_label='time',
-                      power_multiplier=-1,varName=f'MechPower'):
-    """Create a single hdf5 file from multiple WEC-Sim .mat output files
+                       top_label='mcr', seed_label='Seed', H_label='H',
+                       T_label='T', power_label='Power', time_label='Time',
+                       power_multiplier=-1, varName=f'MechPower'):
+    """Create a single .hdf5 file from multiple WEC-Sim .mat output files
 
     Parameters
     ----------
@@ -79,14 +80,20 @@ def wecsim_mats_to_hdf(wecSimDatDir, modelName, outputDir=None, compression=None
 
     Notes
     -----
-    The .mat files from WEC-Sim must be saved as v7.3 format!
-    WEC-Sim currently outputs RM3 power as -ve: power_multiplier performs power*-1
-        to get +ve power output. This may be changed in future WEC-Sim versions
+    - The .mat files from WEC-Sim must be saved as v7.3 format!
+    - power_multiplier: WEC-Sim currently outputs RM3 power as -ve
+                        power_multiplier performs power*-1 to get +ve power
+                        this may change in future WEC-Sim versions
+    - remaining 'label' arguments are defined in the WEC-Sim user's
+          userDefinedFunctionsMCR.m file
     """
 
-    # normalize path to WEC-Sim data (folder containing .mat files)
+    # retrieve list of WEC-Sim .mat files from specified directory
     wecSimDatDir = normpath(wecSimDatDir)
-    files = f'*.mat'
+    fileExtension = f'*.mat'
+    wecSimMatFiles = glob(join(wecSimDatDir, fileExtension))
+    numWecSimMatFiles = len(wecSimMatFiles)
+    print(f'\npyWECcast: Number of WEC-Sim .mat files found in {wecSimDatDir}: {numWecSimMatFiles}\n')
 
     # define path/folder to save .hdf5 file to
     if outputDir == None:
@@ -94,11 +101,19 @@ def wecsim_mats_to_hdf(wecSimDatDir, modelName, outputDir=None, compression=None
     if not exists(outputDir):
         makedirs(outputDir)
 
+    # check if .hdf5 already exists, and if user wants to overwrite
     dbName = join(outputDir, f'WECSim_dataset_{modelName}.hdf5')
+    if exists(dbName):
+        overwrite = input(f'\npyWECcast: {dbName} already exists, enter Y to overwrite : ')
+        if (overwrite == 'Y' or 'y'):
+            os.remove(dbName)
+            print(f'\npyWECcast: old {dbName} file deleted.')
+        else:
+            sys.exit()
 
-    # create hdf5 file from separate .mat files
-    for matfile in glob(join(wecSimDatDir, files)):
-        with h5.File(matfile, 'r') as mat: #shifted to a context managed approach
+    # create hdf5 file from the separate .mat files
+    for matFile in wecSimMatFiles:
+        with h5.File(matFile, 'r') as mat: #shifted to a context managed approach
             # variables may need to be changed according to wec-sim .mat output
             # format - this is defined in userDefinedFunctions.m for wecSimMCR
             # Made setable in kwargs
@@ -108,24 +123,27 @@ def wecsim_mats_to_hdf(wecSimDatDir, modelName, outputDir=None, compression=None
             power = mat[top_label][power_label][0,:]
             time = mat[top_label][time_label][0,:]
         with h5.File(dbName, 'a') as hdf:
-            hdf.create_dataset(f'Seed_{seed}/Hs_{Hs}/Tp_{Tp}/{varName}', data=power*power_multiplier,
-                               compression=compression) # N.B. -1
-            hdf.create_dataset(f'Seed_{seed}/Hs_{Hs}/Tp_{Tp}/Time', data=time, compression=compression)
+            if f'Time' not in hdf.keys():
+                hdf.create_dataset(f'Time', data=time, compression=compression)
+            hdf.create_dataset(f'Hs_{Hs}/Tp_{Tp}/Seed_{seed}/{varName}',
+                               data=power*power_multiplier,
+                               compression=compression)
             # define attributes
-            seedList = list(hdf.keys())
-            for s in seedList:
-                HList = list(hdf[s].keys())
-                for h in HList:
-                    TList = list(hdf[s][h].keys())
-                    for t in TList:
-                        varList = list(hdf[s][h][t].keys())
-            attrsDict = {'Seeds' : seedList,
-                         'H' : HList,
-                         'T' : TList,
-                         'vars' : varList}
+            hsList = list(hdf.keys())[:-1] # remove 'Time' key
+            for hs in hsList:
+                tpList = list(hdf[hs].keys())
+                for tp in tpList:
+                    seedList = list(hdf[hs][tp].keys())
+                    for seed in seedList:
+                        varList = list(hdf[hs][tp][seed].keys())
+            attrsDict = {'Hs' : hsList,
+                         'Tp' : tpList,
+                         'Seeds' : seedList,
+                         'Vars' : varList}
             for a in attrsDict:
                 hdf.attrs.create(a, attrsDict[a])
-            hdf.attrs.create('index', ['/seed/H/T/var'])
+            hdf.attrs.create('index', ['/Hs/Tp/Seed/Var'])
+    print(f'\npyWECcast: new {dbName} file created.')
 
 
 def run_WECSim(ds_name, requiredRuns, oSys='linux', compression=None):
