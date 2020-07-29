@@ -59,7 +59,7 @@ def group_Hs_Te(ncbuoy, noaabuoy, ds_name, h_rounds=1, t_rounds=0):
 def wecsim_mats_to_hdf(wecSimDatDir, modelName, outputDir=None, compression=None,
                        top_label='mcr', seed_label='Seed', H_label='H',
                        T_label='T', power_label='Power', time_label='Time',
-                       power_multiplier=-1, varName=f'MechPower'):
+                       power_multiplier=1.0, varName=f'MechPower'):
     """Create a single .hdf5 file from multiple WEC-Sim .mat output files
 
     Parameters
@@ -72,6 +72,9 @@ def wecsim_mats_to_hdf(wecSimDatDir, modelName, outputDir=None, compression=None
     outputDir: str
         path to directory to save .hdf5 file (will create directory in cwd if
         none provided)
+    power_multiplier: float
+        factor to multiply WEC-Sim power output (e.g. sometimes WEC-Sim outputs
+        power as -ve)
 
     Returns
     -------
@@ -81,9 +84,6 @@ def wecsim_mats_to_hdf(wecSimDatDir, modelName, outputDir=None, compression=None
     Notes
     -----
     - The .mat files from WEC-Sim must be saved as v7.3 format!
-    - power_multiplier: WEC-Sim currently outputs RM3 power as -ve
-                        power_multiplier performs power*-1 to get +ve power
-                        this may change in future WEC-Sim versions
     - remaining 'label' arguments are defined in the WEC-Sim user's
           userDefinedFunctionsMCR.m file
     """
