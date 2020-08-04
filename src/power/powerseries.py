@@ -120,15 +120,25 @@ def link_sea_states(WECSim,Hs,Tp,Dir=None,kdTree=False,Seed=None):
             seed(Seed)
             HsIdx = abs(values[i,0]-wsA[:,0]).argmin()
             wsA_Hs = wsA[choice(where(wsA[:,0]==wsA[HsIdx,0])[0])]
-            if len(wsA_Hs.shape) is 1:
+            if len(wsA_Hs.shape) is 1: # if only one Hs found
                 Hs.append(wsA_Hs[0])
                 Tp.append(wsA_Hs[1])
                 seedlist.append(wsA_Hs[2])
             else:
+                seed(Seed)
                 TpIdx = abs(values[i,1]-wsA_Hs[:,1]).argmin()
-                Hs.append(wsA_Hs[TpIdx,0])
-                Tp.append(wsA_Hs[TpIdx,1])
-                seedlist.append(wsA_Hs[TpIdx,2])
+                wsA_Tp = wsA_Hs[choice(where(wsA_Hs[:,1]==wsA_Hs[TpIdx,1])[0])]
+                if len(wsa_Tp.shape) is 1: # if only one Hs adn Tp found
+                    Hs.append(wsA_Tp[0])
+                    Tp.append(wsA_Tp[1])
+                    seedlist.append(wsA_Tp[2])
+                else: # if more than one seed just pick one
+                    seed(Seed)
+                    wsA_seed = choice(wsA_Tp)
+                    Hs.append(wsA_seed[0])
+                    Tp.append(wsA_seed[1])
+                    seedlist.append(wsA_seed[2])
+                    
         return array([Hs,Tp]), array(seedlist)
             
     
@@ -144,8 +154,7 @@ def link_sea_states(WECSim,Hs,Tp,Dir=None,kdTree=False,Seed=None):
                             wsseedlist.append(float(s[5::]))
                                     
             
-        values = array([Hs,Tp]).T
-        print(wsHs,wsTp,wsseedlist,values)            
+        values = array([Hs,Tp]).T        
         if kdTree:
             tree = cKDTree(seas)
             _, idx = tree.query(values)
@@ -195,26 +204,22 @@ def calculate_fft_matrix(WECSim, Hs, Tp, seedlist, Dir=None, fftFname=f'./tempFF
     if inMemory: results = {}
     
     if not Dir:
-        uni = unique([i for i in zip(Hs,Tp)],axis=0)
-        for seed in seedlist:
-            for i in range(uni.shape[0]):
-                label = f'{seed}/Hs_{uni[i,0]:.2f}/Tp_{uni[i,1]:.2f}'
-                with File(WECSim,'r') as ws:
-                    print(label)
-                    print(WS_time)
-                    print(WS_variable)
-                    time = ws[label][WS_time][cutoff:]
-                    variable = ws[label][WS_variable][cutoff:]
-                if not inMemory:
-                    if os.path.isfile(fftFname):
-                        os.remove(fftFname)
-                    with File(fftFname,'a') as FFT:
-                        coefs,freq = fft(variable), fftfreq(time.shape[0],d=time[1]-time[0])
-                        FFT.create_dataset(f'{label}/frequency', data=freq, dtype=freq.dtype)
-                        FFT.create_dataset(f'{label}/coefficients', data=coefs, dtype=coefs.dtype)
-                else:
-                    results[f'{label}/frequency'] = fftfreq(time.shape[0],d=time[1]-time[0])
-                    results[f'{label}/coefficients'] = fft(variable) 
+        uni = unique([i for i in zip(Hs,Tp,seedlist)],axis=0)
+        for i in range(uni.shape[0]):
+            label = f'Hs_{uni[i,0]:.2f}/Tp_{uni[i,1]:.2f}/Seed_{uni[i,2]:.1f}'
+            with File(WECSim,'r') as ws:
+                time = ws[WS_time][cutoff:]
+                variable = ws[label][WS_variable][cutoff:]
+            if not inMemory:
+                if os.path.isfile(fftFname):
+                    os.remove(fftFname)
+                with File(fftFname,'a') as FFT:
+                    coefs,freq = fft(variable), fftfreq(time.shape[0],d=time[1]-time[0])
+                    FFT.create_dataset(f'{label}/frequency', data=freq, dtype=freq.dtype)
+                    FFT.create_dataset(f'{label}/coefficients', data=coefs, dtype=coefs.dtype)
+            else:
+                results[f'{label}/frequency'] = fftfreq(time.shape[0],d=time[1]-time[0])
+                results[f'{label}/coefficients'] = fft(variable) 
                     
     else:
         pass
@@ -224,7 +229,7 @@ def calculate_fft_matrix(WECSim, Hs, Tp, seedlist, Dir=None, fftFname=f'./tempFF
     
     
 def construct_powerseries(timestamps,freq,Hs,Tp,seedlist,Dir=None,fft_matrix=f'./tempFFT.h5',
-                         recFile=f'./tempRecon.h5',inMemory=False,inPhase=False,Seeds=None,WSseed=None):
+                         recFile=f'./tempRecon.h5',inMemory=False,inPhase=False,WSseed=None):
        
     """
     Parameters:
@@ -252,9 +257,6 @@ def construct_powerseries(timestamps,freq,Hs,Tp,seedlist,Dir=None,fft_matrix=f'.
         fft file will not be saved if True
     inPhase : optional boolean default:False
         parameter to generate the reconstruction with fixed or random phase values
-    Seeds : optional int64 ndarray[:]
-        seeds to assign to the random phase value, used for repeated random seed generation
-        Length of Seeds must be equal to the nWECs
     WSseed : optional int
         value to specify what seed to use when choosing WECSim seeds
         
@@ -268,10 +270,8 @@ def construct_powerseries(timestamps,freq,Hs,Tp,seedlist,Dir=None,fft_matrix=f'.
         times = date_range(timestamps[i], timestamps[i+1], freq=freq)[:-1]
         intTimes = array(times.astype(i64)/10**9)
         lnTime = intTimes.shape[0]
-        seed(WSseed)
-        Choice = choice(seedlist)
-        ffts = f'{Choice}/Hs_{Hs[i]:.2f}/Tp_{Tp[i]:.2f}/coefficients'
-        freqs = f'{Choice}/Hs_{Hs[i]:.2f}/Tp_{Tp[i]:.2f}/frequency'
+        ffts = f'Hs_{Hs[i]:.2f}/Tp_{Tp[i]:.2f}/Seed_{seedlist[i]:.1f}/coefficients'
+        freqs = f'Hs_{Hs[i]:.2f}/Tp_{Tp[i]:.2f}/Seed_{seedlist[i]:.1f}/frequency'
         
         if Dir is None:
             if type(fft_matrix) is not type(''):
@@ -281,10 +281,10 @@ def construct_powerseries(timestamps,freq,Hs,Tp,seedlist,Dir=None,fft_matrix=f'.
                 cShape = coefs.shape[-1]
                 construct = zeros([times.shape[0],cShape],dtype=f64)
                 N = 1/coefs.shape[0]
-                if Seeds is None:
-                    construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape,inPhase)
-                else:
-                    construct = N*__reconstruction_seed__(coefs,f,intTimes,construct,lnTime,cShape,Seeds)
+                #if Seeds is None:
+                construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape,inPhase)
+                #else:
+                #    construct = N*__reconstruction_seed__(coefs,f,intTimes,construct,lnTime,cShape,Seeds)
         
             else:
                 with File(fft_matrix,'r') as ws:
@@ -294,10 +294,10 @@ def construct_powerseries(timestamps,freq,Hs,Tp,seedlist,Dir=None,fft_matrix=f'.
                 cShape = coefs.shape[-1]
                 construct = zeros([times.shape[0],cShape],dtype=f64)
                 N = 1/coefs.shape[0]
-                if Seeds is None:
-                    construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape,inPhase)
-                else:
-                    construct = N*__reconstruction_seed__(coefs,f,intTimes,construct,lnTime,cShape,Seeds)
+                #if Seeds is None:
+                construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape,inPhase)
+                #else:
+                #    construct = N*__reconstruction_seed__(coefs,f,intTimes,construct,lnTime,cShape,Seeds)
                     
         else:
             if type(fft_matrix) is not type(''):
@@ -308,10 +308,10 @@ def construct_powerseries(timestamps,freq,Hs,Tp,seedlist,Dir=None,fft_matrix=f'.
                 cShape = coefs.shape[-1]
                 construct = zeros([times.shape[0],cShape],dtype=f64)
                 N = 1/coefs.shape[0]
-                if Seeds is None:
-                    construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape,inPhase)
-                else:
-                    construct = N*__reconstruction_seed__(coefs,f,intTimes,construct,lnTime,cShape,Seeds)
+                #if Seeds is None:
+                construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape,inPhase)
+                #else:
+                #    construct = N*__reconstruction_seed__(coefs,f,intTimes,construct,lnTime,cShape,Seeds)
                     
             else:
                 with File(fft_matrix,'r') as ws:
@@ -322,10 +322,10 @@ def construct_powerseries(timestamps,freq,Hs,Tp,seedlist,Dir=None,fft_matrix=f'.
                 cShape = coefs.shape[-1]
                 construct = zeros([times.shape[0],cShape],dtype=f64)
                 N = 1/coefs.shape[0]
-                if Seeds is None:
-                    construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape,inPhase)
-                else:
-                    construct = N*__reconstruction_seed__(coefs,f,intTimes,construct,lnTime,cShape,Seeds)
+                #if Seeds is None:
+                construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape,inPhase)
+                #else:
+                #    construct = N*__reconstruction_seed__(coefs,f,intTimes,construct,lnTime,cShape,Seeds)
         
         if i == 0:
             if not inMemory:
