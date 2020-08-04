@@ -2,9 +2,10 @@ import os
 import warnings
 
 from h5py import File
-from numpy import array, abs, zeros, zeros_like, unique, pi, cos, sin, sum, newaxis, vstack, hstack, where, equal, all
+from numpy import array, abs, zeros, zeros_like, unique, pi, cos, sin, sum, newaxis, vstack, hstack, where, equal, all, nan
 from numpy import int64 as i64 
 from numpy import float64 as f64
+from numpy.ma import masked_equal
 from scipy.spatial import cKDTree
 from scipy.fft import fft, fftfreq
 from numba import njit, typeof, prange, float64, complex128, int64, b1, optional, intp
@@ -112,43 +113,47 @@ def link_sea_states(WECSim,Hs,Tp,Dir=None,kdTree=False,Seed=None):
             Hs and Tp values corresponding to available simulation in powerseries matrix 
     """
     
-    def __find_shortest__(values,seas,result,idx,Seed):
-        for i in prange(idx):
+    def __find_shortest__(values,wsHs,wsTp,wsseeds,Seed):
+        wsA = array([array(wsHs), array(wsTp), array(wsseeds)]).T
+        Hs, Tp, seedlist = [], [], []
+        for i in range(values.shape[0]):
             seed(Seed)
-            result[i,0] = seas[abs(values[i,0]-seas[:,0]).argmin(),0]
-            result[i,1] = seas[abs(values[i,1]-seas[choice(where(seas[:,0]==result[i,0])[0]),1]).argmin(),1]
-        return result
+            HsIdx = abs(values[i,0]-wsA[:,0]).argmin()
+            wsA_Hs = wsA[choice(where(wsA[:,0]==wsA[HsIdx,0])[0])]
+            if len(wsA_Hs.shape) is 1:
+                Hs.append(wsA_Hs[0])
+                Tp.append(wsA_Hs[1])
+                seedlist.append(wsA_Hs[2])
+            else:
+                TpIdx = abs(values[i,1]-wsA_Hs[:,1]).argmin()
+                Hs.append(wsA_Hs[TpIdx,0])
+                Tp.append(wsA_Hs[TpIdx,1])
+                seedlist.append(wsA_Hs[TpIdx,2])
+        return array([Hs,Tp]), array(seedlist)
             
     
     if not Dir:
-        seas, seedlist = [], []
+        wsHs, wsTp, wsseedlist = [], [], []
         with File(WECSim,'r') as pMatrix:
-            for seedName in pMatrix.keys():
-                seas.append(array([[float(hs[3::]),float(tp[3::])] 
-                            for hs in pMatrix[seedName].keys() 
-                              for tp in pMatrix[seedName][hs].keys()]
-                            ))
-                seedlist.append(seedName)
-        
-        # Equal sea-state check between seeds
-        check = array(seas).sum(axis=1)
-        Check = lambda x: [i for i in range(len(x)-1) if x[i]!=x[i+1]]
-    
-        if Check(check[:,0]) and not Check(check[:,1]):
-            warn = f' -- Modeled sea-state missing --'
-            warnings.warn(warn,UserWarning)
+            for hs in pMatrix.keys():
+                if hs != 'Time':
+                    for tp in pMatrix[hs].keys():
+                        for s in pMatrix[hs][tp].keys():
+                            wsHs.append(float(hs[3::]))
+                            wsTp.append(float(tp[3::]))
+                            wsseedlist.append(float(s[5::]))
+                                    
             
         values = array([Hs,Tp]).T
-                
+        print(wsHs,wsTp,wsseedlist,values)            
         if kdTree:
             tree = cKDTree(seas)
             _, idx = tree.query(values)
             return array([seas[int(i-1),:] for i in idx]), seedlist, values
 
         else:
-            result = zeros_like(values,dtype=f64)
-            result = __find_shortest__(values,seas[0],result,result.shape[0],Seed)
-            return result, seedlist, values
+            result, seedlist = __find_shortest__(values,wsHs,wsTp,wsseedlist,Seed)
+            return result.T, seedlist, values
             
             
     elif Dir:
