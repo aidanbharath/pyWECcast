@@ -105,13 +105,15 @@ def wecsim_mats_to_hdf(wecSimDatDir, modelName, outputDir=None, compression=None
     dbName = join(outputDir, f'WECSim_dataset_{modelName}.hdf5')
     if exists(dbName):
         overwrite = input(f'\npyWECcast: {dbName} already exists, enter Y to overwrite : ')
-        if (overwrite == 'Y' or 'y'):
+        if overwrite=='Y' or overwrite=='y':
+            print(f'\npyWECcast: deleting old .hdf5 file...')
             os.remove(dbName)
             print(f'\npyWECcast: old {dbName} file deleted.')
-        else:
-            sys.exit()
+        elif overwrite != 'Y':
+            return
 
     # create hdf5 file from the separate .mat files
+    print(f'\npyWECcast: creating new .hdf5 file...')
     for matFile in wecSimMatFiles:
         with h5.File(matFile, 'r') as mat: #shifted to a context managed approach
             # variables may need to be changed according to wec-sim .mat output
