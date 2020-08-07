@@ -118,7 +118,7 @@ def link_sea_states(WECSim,Hs,Tp,Dir=None,kdTree=False,Seed=None):
             seed(Seed)
             HsIdx = abs(values[i,0]-wsA[:,0]).argmin()
             wsA_Hs = wsA[choice(where(wsA[:,0]==wsA[HsIdx,0])[0])]
-            if len(wsA_Hs.shape) is 1: # if only one Hs found
+            if len(wsA_Hs.shape) == 1: # if only one Hs found
                 Hs.append(wsA_Hs[0])
                 Tp.append(wsA_Hs[1])
                 seedlist.append(wsA_Hs[2])
@@ -126,7 +126,7 @@ def link_sea_states(WECSim,Hs,Tp,Dir=None,kdTree=False,Seed=None):
                 seed(Seed)
                 TpIdx = abs(values[i,1]-wsA_Hs[:,1]).argmin()
                 wsA_Tp = wsA_Hs[choice(where(wsA_Hs[:,1]==wsA_Hs[TpIdx,1])[0])]
-                if len(wsa_Tp.shape) is 1: # if only one Hs adn Tp found
+                if len(wsa_Tp.shape) == 1: # if only one Hs adn Tp found
                     Hs.append(wsA_Tp[0])
                     Tp.append(wsA_Tp[1])
                     seedlist.append(wsA_Tp[2])
