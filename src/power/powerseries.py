@@ -267,8 +267,8 @@ def construct_powerseries(timestamps,freq,Hs,Tp,seedlist,Dir=None,fft_matrix=f'.
         times = date_range(timestamps[i], timestamps[i+1], freq=freq)[:-1]
         intTimes = array(times.astype(i64)/10**9)
         lnTime = intTimes.shape[0]
-        ffts = f'Hs_{Hs[i]:.2f}/Tp_{Tp[i]:.2f}/Seed_{seedlist[i]:.1f}/coefficients'
-        freqs = f'Hs_{Hs[i]:.2f}/Tp_{Tp[i]:.2f}/Seed_{seedlist[i]:.1f}/frequency'
+        ffts = f'Hs_{Hs[i]}/Tp_{Tp[i]}/Seed_{seedlist[i]}/coefficients'
+        freqs = f'Hs_{Hs[i]}/Tp_{Tp[i]}/Seed_{seedlist[i]}/frequency'
 
         if Dir is None:
             if type(fft_matrix) is not type(''):
