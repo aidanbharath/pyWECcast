@@ -168,7 +168,7 @@ def link_sea_states(WECSim,Hs,Tp,Dir=None,kdTree=False,Seed=None):
 
 
 def calculate_fft_matrix(WECSim, Hs, Tp, seedlist, Dir=None, fftFname=f'./tempFFT.h5', inMemory=False,
-                        WS_time=f'Time',WS_variable=f'Power',cutoff=None):
+                        WS_time=f'Time',WS_variable=f'Power',cutoff=None,dt=None):
     """
     Parameters:
 
@@ -193,6 +193,9 @@ def calculate_fft_matrix(WECSim, Hs, Tp, seedlist, Dir=None, fftFname=f'./tempFF
         WECSim variable name to use in FFT
     cutoff : optional int
         Number of values to remove for the start of the timeseries
+    dt : optional float64
+        optional parameter to specify the dt value directly which removes
+        the need for the time array
 
     Returns:
         dict : (coefficients complex128 ndarray[:], frequencies float64 ndarray[:])
@@ -212,12 +215,20 @@ def calculate_fft_matrix(WECSim, Hs, Tp, seedlist, Dir=None, fftFname=f'./tempFF
                 if os.path.isfile(fftFname):
                     os.remove(fftFname)
                 with File(fftFname,'a') as FFT:
-                    coefs,freq = fft(variable), fftfreq(time.shape[0],d=time[1]-time[0])
+                    if dt:  
+                        coefs,freq = fft(variable), fftfreq(variable.shape[0],d=dt)
+                    else:
+                        coefs,freq = fft(variable), fftfreq(time.shape[0],d=time[1]-time[0])
+                    
                     FFT.create_dataset(f'{label}/frequency', data=freq, dtype=freq.dtype)
                     FFT.create_dataset(f'{label}/coefficients', data=coefs, dtype=coefs.dtype)
             else:
-                results[f'{label}/frequency'] = fftfreq(time.shape[0],d=time[1]-time[0])
-                results[f'{label}/coefficients'] = fft(variable)
+                if dt:
+                    results[f'{label}/frequency'] = fftfreq(variable.shape[0],d=dt)
+                    results[f'{label}/coefficients'] = fft(variable)
+                else:
+                    results[f'{label}/frequency'] = fftfreq(time.shape[0],d=time[1]-time[0])
+                    results[f'{label}/coefficients'] = fft(variable)
 
     else:
         pass
