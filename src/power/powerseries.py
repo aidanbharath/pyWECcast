@@ -2,7 +2,7 @@ import os
 import warnings
 
 from h5py import File
-from numpy import array, abs, zeros, zeros_like, unique, pi, cos, sin, sum, newaxis, vstack, hstack, where, equal, all, nan
+from numpy import array, abs, zeros, zeros_like, unique, pi, cos, sin, sum, newaxis, vstack, hstack, where, equal, all, nan, where, arange, isnan, empty
 from numpy import int64 as i64
 from numpy import float64 as f64
 from numpy.ma import masked_equal
@@ -112,31 +112,38 @@ def link_sea_states(WECSim,Hs,Tp,Dir=None,kdTree=False,Seed=None):
     """
 
     def __find_shortest__(values,wsHs,wsTp,wsseeds,Seed):
+        
+        flag, count = False, 0
         wsA = array([array(wsHs), array(wsTp), array(wsseeds)]).T
         Hs, Tp, seedlist = [], [], []
         for i in range(values.shape[0]):
-            seed(Seed)
-            HsIdx = abs(values[i,0]-wsA[:,0]).argmin()
-            wsA_Hs = wsA[choice(where(wsA[:,0]==wsA[HsIdx,0])[0])]
-            if len(wsA_Hs.shape) == 1: # if only one Hs found
-                Hs.append(wsA_Hs[0])
-                Tp.append(wsA_Hs[1])
-                seedlist.append(wsA_Hs[2])
+            if isnan(values[i,:]).any() or sum(values[i,:]) == 0.:
+                Hs.append(nan)
+                Tp.append(nan)
+                seedlist.append(nan)
+                flag = True
+                count += 1
             else:
-                seed(Seed)
-                TpIdx = abs(values[i,1]-wsA_Hs[:,1]).argmin()
-                wsA_Tp = wsA_Hs[choice(where(wsA_Hs[:,1]==wsA_Hs[TpIdx,1])[0])]
-                if len(wsa_Tp.shape) == 1: # if only one Hs adn Tp found
-                    Hs.append(wsA_Tp[0])
-                    Tp.append(wsA_Tp[1])
-                    seedlist.append(wsA_Tp[2])
-                else: # if more than one seed just pick one
-                    seed(Seed)
-                    wsA_seed = choice(wsA_Tp)
-                    Hs.append(wsA_seed[0])
-                    Tp.append(wsA_seed[1])
-                    seedlist.append(wsA_seed[2])
+                HsDiff = abs(values[i,0]-wsA[:,0])
+                HsMins = where(HsDiff==HsDiff.min())[0].flatten()
+                wsA_Hs = wsA[HsMins,:]
+                TeDiff = abs(values[i,1]-wsA_Hs[:,1])
+                TeMins = where(TeDiff==TeDiff.min())[0].flatten()
+                wsA_Te = wsA_Hs[TeMins,:]
 
+                if wsA_Te.shape[0] > 1:
+                    seed(Seed)
+                    wsA_Te = wsA_Te[choice(arange(0,wsA_Te[:,0].shape[0],1)),:]
+
+                wsA_seed = wsA_Te.flatten()
+                Hs.append(wsA_seed[0])
+                Tp.append(wsA_seed[1])
+                seedlist.append(wsA_seed[2])
+            
+        if flag:
+            warn = f'Dataset passed contains {count} instances of null values'
+            warnings.warn(warn,UserWarning)
+            
         return array([Hs,Tp]), array(seedlist)
 
 
@@ -207,28 +214,31 @@ def calculate_fft_matrix(WECSim, Hs, Tp, seedlist, Dir=None, fftFname=f'./tempFF
     if not Dir:
         uni = unique([i for i in zip(Hs,Tp,seedlist)],axis=0)
         for i in range(uni.shape[0]):
-            label = f'Hs_{uni[i,0]}/Tp_{uni[i,1]}/Seed_{uni[i,2]}'
-            with File(WECSim,'r') as ws:
-                time = ws[WS_time][cutoff:]
-                variable = ws[label][WS_variable][cutoff:]
-            if not inMemory:
-                if os.path.isfile(fftFname):
-                    os.remove(fftFname)
-                with File(fftFname,'a') as FFT:
-                    if dt:  
-                        coefs,freq = fft(variable), fftfreq(variable.shape[0],d=dt)
-                    else:
-                        coefs,freq = fft(variable), fftfreq(time.shape[0],d=time[1]-time[0])
-                    
-                    FFT.create_dataset(f'{label}/frequency', data=freq, dtype=freq.dtype)
-                    FFT.create_dataset(f'{label}/coefficients', data=coefs, dtype=coefs.dtype)
+            if isnan(uni[i,:]).any():
+                pass
             else:
-                if dt:
-                    results[f'{label}/frequency'] = fftfreq(variable.shape[0],d=dt)
-                    results[f'{label}/coefficients'] = fft(variable)
+                label = f'Hs_{uni[i,0]}/Tp_{uni[i,1]}/Seed_{uni[i,2]}'
+                with File(WECSim,'r') as ws:
+                    time = ws[WS_time][cutoff:]
+                    variable = ws[label][WS_variable][cutoff:]
+                if not inMemory:
+                    if os.path.isfile(fftFname):
+                        os.remove(fftFname)
+                    with File(fftFname,'a') as FFT:
+                        if dt:  
+                            coefs,freq = fft(variable), fftfreq(variable.shape[0],d=dt)
+                        else:
+                            coefs,freq = fft(variable), fftfreq(time.shape[0],d=time[1]-time[0])
+
+                        FFT.create_dataset(f'{label}/frequency', data=freq, dtype=freq.dtype)
+                        FFT.create_dataset(f'{label}/coefficients', data=coefs, dtype=coefs.dtype)
                 else:
-                    results[f'{label}/frequency'] = fftfreq(time.shape[0],d=time[1]-time[0])
-                    results[f'{label}/coefficients'] = fft(variable)
+                    if dt:
+                        results[f'{label}/frequency'] = fftfreq(variable.shape[0],d=dt)
+                        results[f'{label}/coefficients'] = fft(variable)
+                    else:
+                        results[f'{label}/frequency'] = fftfreq(time.shape[0],d=time[1]-time[0])
+                        results[f'{label}/coefficients'] = fft(variable)
 
     else:
         pass
@@ -278,62 +288,77 @@ def construct_powerseries(timestamps,freq,Hs,Tp,seedlist,Dir=None,fft_matrix=f'.
         times = date_range(timestamps[i], timestamps[i+1], freq=freq)[:-1]
         intTimes = array(times.astype(i64)/10**9)
         lnTime = intTimes.shape[0]
-        ffts = f'Hs_{Hs[i]}/Tp_{Tp[i]}/Seed_{seedlist[i]}/coefficients'
-        freqs = f'Hs_{Hs[i]}/Tp_{Tp[i]}/Seed_{seedlist[i]}/frequency'
-
-        if Dir is None:
+        if isnan(array([Hs[i],Tp[i],seedlist[i]])).any():
             if type(fft_matrix) is not type(''):
-                coefs, f = fft_matrix[ffts], fft_matrix[freqs]
-                if len(coefs.shape) == 1:
-                    coefs = coefs[:,newaxis]
-                cShape = coefs.shape[-1]
-                construct = zeros([times.shape[0],cShape],dtype=f64)
-                N = 1/coefs.shape[0]
-                #if Seeds is None:
-                construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape,inPhase)
-                #else:
-                #    construct = N*__reconstruction_seed__(coefs,f,intTimes,construct,lnTime,cShape,Seeds)
-
+                clist = [i for i in list(fft_matrix.keys()) if 'coefficients' in i]
+                coefs = fft_matrix[clist[0]].shape
+                construct = empty((times.shape[0],coefs[-1]))
+                construct[:] = nan
+            
             else:
                 with File(fft_matrix,'r') as ws:
-                    coefs, f = ws[ffts][:], ws[freqs][:]
-                if len(coefs.shape) == 1:
-                    coefs = coefs[:,newaxis]
-                cShape = coefs.shape[-1]
-                construct = zeros([times.shape[0],cShape],dtype=f64)
-                N = 1/coefs.shape[0]
-                #if Seeds is None:
-                construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape,inPhase)
-                #else:
-                #    construct = N*__reconstruction_seed__(coefs,f,intTimes,construct,lnTime,cShape,Seeds)
-
+                    clist = [i for i in list(ws.keys()) if 'coefficients' in i]
+                    coefs = ws[list(clist[0])].shape
+                    construct = empty((times.shape[0],coefs[-1]))
+                    construct[:] = nan
+                
+                
         else:
-            if type(fft_matrix) is not type(''):
-                coefs, f = fft_matrix[ffts], fft_matrix[freqs]
-                if len(coefs.shape) == 1:
-                    coefs = coefs[:,newaxis]
-                ceofs = Dir[i,:]*coefs
-                cShape = coefs.shape[-1]
-                construct = zeros([times.shape[0],cShape],dtype=f64)
-                N = 1/coefs.shape[0]
-                #if Seeds is None:
-                construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape,inPhase)
-                #else:
-                #    construct = N*__reconstruction_seed__(coefs,f,intTimes,construct,lnTime,cShape,Seeds)
+            ffts = f'Hs_{Hs[i]}/Tp_{Tp[i]}/Seed_{seedlist[i]}/coefficients'
+            freqs = f'Hs_{Hs[i]}/Tp_{Tp[i]}/Seed_{seedlist[i]}/frequency'
+            if Dir is None:
+                if type(fft_matrix) is not type(''):
+                    coefs, f = fft_matrix[ffts], fft_matrix[freqs]
+                    if len(coefs.shape) == 1:
+                        coefs = coefs[:,newaxis]
+                    cShape = coefs.shape[-1]
+                    construct = zeros([times.shape[0],cShape],dtype=f64)
+                    N = 1/coefs.shape[0]
+                    #if Seeds is None:
+                    construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape,inPhase)
+                    #else:
+                    #    construct = N*__reconstruction_seed__(coefs,f,intTimes,construct,lnTime,cShape,Seeds)
+
+                else:
+                    with File(fft_matrix,'r') as ws:
+                        coefs, f = ws[ffts][:], ws[freqs][:]
+                    if len(coefs.shape) == 1:
+                        coefs = coefs[:,newaxis]
+                    cShape = coefs.shape[-1]
+                    construct = zeros([times.shape[0],cShape],dtype=f64)
+                    N = 1/coefs.shape[0]
+                    #if Seeds is None:
+                    construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape,inPhase)
+                    #else:
+                    #    construct = N*__reconstruction_seed__(coefs,f,intTimes,construct,lnTime,cShape,Seeds)
 
             else:
-                with File(fft_matrix,'r') as ws:
-                    coefs, f = ws[ffts][:], ws[freqs][:]
-                if len(coefs.shape) == 1:
-                    coefs = coefs[:,newaxis]
-                ceofs = Dir[i,:]*coefs
-                cShape = coefs.shape[-1]
-                construct = zeros([times.shape[0],cShape],dtype=f64)
-                N = 1/coefs.shape[0]
-                #if Seeds is None:
-                construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape,inPhase)
-                #else:
-                #    construct = N*__reconstruction_seed__(coefs,f,intTimes,construct,lnTime,cShape,Seeds)
+                if type(fft_matrix) is not type(''):
+                    coefs, f = fft_matrix[ffts], fft_matrix[freqs]
+                    if len(coefs.shape) == 1:
+                        coefs = coefs[:,newaxis]
+                    ceofs = Dir[i,:]*coefs
+                    cShape = coefs.shape[-1]
+                    construct = zeros([times.shape[0],cShape],dtype=f64)
+                    N = 1/coefs.shape[0]
+                    #if Seeds is None:
+                    construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape,inPhase)
+                    #else:
+                    #    construct = N*__reconstruction_seed__(coefs,f,intTimes,construct,lnTime,cShape,Seeds)
+
+                else:
+                    with File(fft_matrix,'r') as ws:
+                        coefs, f = ws[ffts][:], ws[freqs][:]
+                    if len(coefs.shape) == 1:
+                        coefs = coefs[:,newaxis]
+                    ceofs = Dir[i,:]*coefs
+                    cShape = coefs.shape[-1]
+                    construct = zeros([times.shape[0],cShape],dtype=f64)
+                    N = 1/coefs.shape[0]
+                    #if Seeds is None:
+                    construct = N*__reconstruction__(coefs,f,intTimes,construct,lnTime,cShape,inPhase)
+                    #else:
+                    #    construct = N*__reconstruction_seed__(coefs,f,intTimes,construct,lnTime,cShape,Seeds)
 
         if i == 0:
             if not inMemory:
